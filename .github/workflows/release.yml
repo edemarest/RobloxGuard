@@ -29,12 +29,42 @@ jobs:
       - name: Publish (single-file, self-contained)
         run: dotnet publish ./src/RobloxGuard.UI/RobloxGuard.UI.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -o out\publish
 
+      - name: Check publish output
+        shell: pwsh
+        run: |
+          if (Test-Path out\publish\RobloxGuard.exe) {
+            Write-Host "✓ RobloxGuard.exe found"
+            Get-Item out\publish\RobloxGuard.exe | ForEach-Object { Write-Host "  Size: $($_.Length / 1MB) MB" }
+          } else {
+            Write-Host "✗ RobloxGuard.exe NOT found!"
+            Write-Host "Contents of out\publish:"
+            Get-ChildItem out\publish -Recurse | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          }
+
       - name: Install Inno Setup
         run: choco install innosetup --yes
 
       - name: Build installer (Inno)
+        shell: pwsh
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ".\build\inno\RobloxGuard.iss"
+          $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $isccPath)) {
+            Write-Host "✗ ISCC.exe not found at $isccPath"
+            exit 1
+          }
+          & $isccPath ".\build\inno\RobloxGuard.iss"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "✗ Inno Setup build failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+          Write-Host "✓ Inno Setup build succeeded"
+          if (Test-Path build\inno\Output\RobloxGuardInstaller.exe) {
+            Get-Item build\inno\Output\RobloxGuardInstaller.exe | ForEach-Object { Write-Host "  Size: $($_.Length / 1MB) MB" }
+          } else {
+            Write-Host "✗ RobloxGuardInstaller.exe NOT found in output"
+            exit 1
+          }
 
       - name: Checksums
         shell: pwsh
