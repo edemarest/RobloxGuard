@@ -281,12 +281,27 @@ class Program
             }
 
             // Perform installation
-            InstallerHelper.PerformFirstRunSetup(appExePath);
+            var (setupSuccess, setupMessages) = InstallerHelper.PerformFirstRunSetup(appExePath);
             
-            Console.WriteLine("✓ Installation completed successfully!");
-            Console.WriteLine($"  • Protocol handler registered");
-            Console.WriteLine($"  • Scheduled task created (runs on logon)");
-            Console.WriteLine($"  • Configuration initialized");
+            // Display setup results
+            Console.WriteLine();
+            foreach (var message in setupMessages)
+            {
+                Console.WriteLine(message);
+            }
+
+            if (setupSuccess)
+            {
+                Console.WriteLine();
+                Console.WriteLine("✓ Installation completed successfully!");
+                Environment.Exit(0);
+            }
+            else
+            {
+                Console.WriteLine();
+                Console.WriteLine("✗ Installation failed. Please check the errors above.");
+                Environment.Exit(1);
+            }
         }
         catch (Exception ex)
         {
