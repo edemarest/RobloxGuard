@@ -39,10 +39,14 @@ jobs:
       - name: Checksums
         shell: pwsh
         run: |
-          Get-ChildItem out\publish, build\inno\Output -Recurse | `
-            Get-FileHash -Algorithm SHA256 | `
-            ForEach-Object { "$($_.Hash)  $($_.Path)" } | `
-            Set-Content out\checksums.sha256
+          $files = @()
+          $files += Get-ChildItem out\publish -Recurse -File
+          $files += Get-ChildItem build\inno\Output -Recurse -File -ErrorAction SilentlyContinue
+          if ($files.Count -gt 0) {
+            $files | Get-FileHash -Algorithm SHA256 | `
+              ForEach-Object { "$($_.Hash)  $($_.Path)" } | `
+              Set-Content out\checksums.sha256
+          }
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
