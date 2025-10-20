@@ -62,36 +62,25 @@ class Program
     /// <summary>
     /// Handles auto-start mode when EXE is clicked with no arguments.
     /// Logic:
-    /// 1. If not installed: Show help and exit
-    /// 2. If monitor already running: Show settings UI
-    /// 3. If monitor not running: Start it in background
+    /// 1. If monitor already running: Show settings UI
+    /// 2. If monitor not running: Start it in background
+    /// Note: Skip installation check to allow development/testing without registry setup
     /// </summary>
     static void HandleAutoStartMode()
     {
         try
         {
-            // Step 1: Check if RobloxGuard is installed
-            if (!InstallerHelper.IsInstalled())
-            {
-                Console.WriteLine("RobloxGuard is not installed yet.");
-                Console.WriteLine("Please run: RobloxGuard.exe --install-first-run");
-                Console.WriteLine();
-                Console.WriteLine("Or use the installer to set up RobloxGuard.");
-                System.Threading.Thread.Sleep(3000);
-                return;
-            }
-
-            // Step 2: Check if monitor is already running
+            // Step 1: Check if monitor is already running
             if (MonitorStateHelper.IsMonitorRunning())
             {
                 Console.WriteLine(MonitorStateHelper.GetMonitorStatus());
-                Console.WriteLine("Opening settings UI...");
+                Console.WriteLine("Monitor already running. Opening settings UI...");
                 System.Threading.Thread.Sleep(1000);
                 ShowSettingsUI();
                 return;
             }
 
-            // Step 3: Start monitor in background
+            // Step 2: Start monitor in background (skip installation check for development)
             Console.WriteLine("Starting RobloxGuard monitoring...");
             StartMonitorInBackground();
         }
@@ -405,11 +394,21 @@ class Program
                 try
                 {
                     var alert = new AlertWindow();
-                    alert.ShowDialog();
+                    
+                    // Ensure window is visible and on top
+                    alert.Topmost = true;
+                    alert.ShowInTaskbar = true;
+                    alert.WindowState = System.Windows.WindowState.Normal;
+                    
+                    // Show dialog (blocking on this thread, but monitor continues on its thread)
+                    var result = alert.ShowDialog();
+                    
+                    Console.WriteLine($"[AlertWindow] Alert displayed and closed, result: {result}");
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[AlertWindow] Error showing alert: {ex.Message}");
+                    Console.WriteLine($"[AlertWindow] Stack trace: {ex.StackTrace}");
                 }
             })
             {
@@ -417,10 +416,13 @@ class Program
             };
             thread.SetApartmentState(ApartmentState.STA);
             thread.Start();
+            
+            Console.WriteLine($"[OnGameDetected] Alert thread started (ID: {thread.ManagedThreadId})");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[OnGameDetected] Error showing alert: {ex.Message}");
+            Console.WriteLine($"[OnGameDetected] Stack trace: {ex.StackTrace}");
         }
     }
 }

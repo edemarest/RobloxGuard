@@ -25,6 +25,7 @@ public class LogMonitor : IDisposable
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _monitoringTask;
     private long _lastPosition = 0;
+    private bool _isFirstStart = true;  // Skip old entries on startup
     
     // Track last error time to suppress repetitive errors
     private DateTime _lastErrorTime = DateTime.MinValue;
@@ -264,6 +265,7 @@ public class LogMonitor : IDisposable
 
     /// <summary>
     /// Reads new lines from the log file starting from last known position.
+    /// On first start, skip all existing entries to only detect new game joins.
     /// </summary>
     private void ReadNewLinesFromFile(string logFile)
     {
@@ -273,6 +275,16 @@ public class LogMonitor : IDisposable
             using (var fileStream = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, FileOptions.SequentialScan))
             using (var reader = new StreamReader(fileStream))
             {
+                // On first start, skip all existing entries and position at end of file
+                if (_isFirstStart)
+                {
+                    reader.BaseStream.Seek(0, SeekOrigin.End);
+                    _lastPosition = reader.BaseStream.Position;
+                    _isFirstStart = false;
+                    System.Console.WriteLine("[LogMonitor] Startup: Skipping existing log entries, monitoring for new games only");
+                    return;
+                }
+
                 reader.BaseStream.Seek(_lastPosition, SeekOrigin.Begin);
 
                 string? line;
