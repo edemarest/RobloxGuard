@@ -1,4 +1,5 @@
 using RobloxGuard.Core;
+using System.IO;
 
 namespace RobloxGuard.UI;
 
@@ -265,8 +266,14 @@ class Program
             Console.WriteLine("Starting RobloxGuard installation...");
             
             // Get app executable path
-            string appExePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            if (string.IsNullOrEmpty(appExePath))
+            // Use AppContext.BaseDirectory for single-file published apps
+            string appExePath = Path.Combine(AppContext.BaseDirectory, "RobloxGuard.exe");
+            if (!File.Exists(appExePath))
+            {
+                // Fallback to Assembly.Location if BaseDirectory fails
+                appExePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            }
+            if (string.IsNullOrEmpty(appExePath) || !File.Exists(appExePath))
             {
                 Console.WriteLine("ERROR: Could not determine application path.");
                 Environment.Exit(1);
