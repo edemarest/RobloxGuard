@@ -4,21 +4,53 @@ on:
     tags: [ 'v*' ]
 
 jobs:
-  build:
-    uses: ./.github/workflows/ci.yml
-
-  publish:
-    needs: build
+  release:
     runs-on: windows-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
-          name: RobloxGuard-artifacts
-          path: dist
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore ./src/RobloxGuard.sln
+
+      - name: Build
+        run: dotnet build ./src/RobloxGuard.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test ./src/RobloxGuard.sln -c Release --no-build --verbosity normal
+
+      - name: Publish (single-file, self-contained)
+        run: dotnet publish ./src/RobloxGuard.UI/RobloxGuard.UI.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -o out\publish
+
+      - name: Install Inno Setup
+        run: choco install innosetup --yes
+
+      - name: Build installer (Inno)
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ".\build\inno\RobloxGuard.iss"
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          $files = @()
+          $files += Get-ChildItem out\publish -Recurse -File
+          $files += Get-ChildItem build\inno\Output -Recurse -File -ErrorAction SilentlyContinue
+          if ($files.Count -gt 0) {
+            $files | Get-FileHash -Algorithm SHA256 | `
+              ForEach-Object { "$($_.Hash)  $($_.Path)" } | `
+              Set-Content out\checksums.sha256
+          }
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/**/*
+          files: |
+            out\publish\RobloxGuard.exe
+            build\inno\Output\RobloxGuardInstaller.exe
+            out\checksums.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
