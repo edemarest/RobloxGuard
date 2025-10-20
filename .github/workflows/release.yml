@@ -27,7 +27,7 @@ jobs:
         run: dotnet test ./src/RobloxGuard.sln -c Release --no-build --verbosity normal
 
       - name: Publish (single-file, self-contained)
-        run: dotnet publish ./src/RobloxGuard.UI/RobloxGuard.UI.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -o out\publish
+        run: dotnet publish ./src/RobloxGuard.UI/RobloxGuard.UI.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -p:AssemblyName=RobloxGuard -o out\publish
 
       - name: Check publish output
         shell: pwsh
@@ -46,23 +46,33 @@ jobs:
         run: choco install innosetup --yes
 
       - name: Build installer (Inno)
-        shell: pwsh
+        shell: powershell
         run: |
           $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $isccPath)) {
-            Write-Host "✗ ISCC.exe not found at $isccPath"
+            Write-Host "ERROR: ISCC.exe not found at $isccPath"
             exit 1
           }
-          & $isccPath ".\build\inno\RobloxGuard.iss"
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "✗ Inno Setup build failed with exit code $LASTEXITCODE"
-            exit $LASTEXITCODE
+          Write-Host "Running ISCC.exe..."
+          & $isccPath ".\build\inno\RobloxGuard.iss" 2>&1
+          $exitCode = $LASTEXITCODE
+          Write-Host "ISCC exit code: $exitCode"
+          if ($exitCode -ne 0) {
+            Write-Host "ERROR: Inno Setup build failed"
+            exit $exitCode
           }
-          Write-Host "✓ Inno Setup build succeeded"
+          Write-Host "Checking output..."
           if (Test-Path build\inno\Output\RobloxGuardInstaller.exe) {
-            Get-Item build\inno\Output\RobloxGuardInstaller.exe | ForEach-Object { Write-Host "  Size: $($_.Length / 1MB) MB" }
+            $size = (Get-Item build\inno\Output\RobloxGuardInstaller.exe).Length / 1MB
+            Write-Host "SUCCESS: RobloxGuardInstaller.exe created ($size MB)"
           } else {
-            Write-Host "✗ RobloxGuardInstaller.exe NOT found in output"
+            Write-Host "ERROR: RobloxGuardInstaller.exe not found in output"
+            Write-Host "Contents of build\inno\Output:"
+            if (Test-Path build\inno\Output) {
+              Get-ChildItem build\inno\Output -Recurse
+            } else {
+              Write-Host "  (directory does not exist)"
+            }
             exit 1
           }
 
