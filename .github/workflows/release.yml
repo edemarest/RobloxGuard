@@ -48,32 +48,37 @@ jobs:
       - name: Build installer (Inno)
         shell: powershell
         run: |
-          $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $isccPath)) {
-            Write-Host "ERROR: ISCC.exe not found at $isccPath"
-            exit 1
-          }
-          Write-Host "Running ISCC.exe..."
-          & $isccPath ".\build\inno\RobloxGuard.iss" 2>&1
-          $exitCode = $LASTEXITCODE
-          Write-Host "ISCC exit code: $exitCode"
-          if ($exitCode -ne 0) {
-            Write-Host "ERROR: Inno Setup build failed"
-            exit $exitCode
-          }
-          Write-Host "Checking output..."
-          if (Test-Path build\inno\Output\RobloxGuardInstaller.exe) {
-            $size = (Get-Item build\inno\Output\RobloxGuardInstaller.exe).Length / 1MB
-            Write-Host "SUCCESS: RobloxGuardInstaller.exe created ($size MB)"
-          } else {
-            Write-Host "ERROR: RobloxGuardInstaller.exe not found in output"
-            Write-Host "Contents of build\inno\Output:"
-            if (Test-Path build\inno\Output) {
-              Get-ChildItem build\inno\Output -Recurse
-            } else {
-              Write-Host "  (directory does not exist)"
+          Push-Location build\inno
+          try {
+            $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+            if (-not (Test-Path $isccPath)) {
+              Write-Host "ERROR: ISCC.exe not found at $isccPath"
+              exit 1
             }
-            exit 1
+            Write-Host "Running ISCC.exe from $(Get-Location)..."
+            & $isccPath ".\RobloxGuard.iss" 2>&1
+            $exitCode = $LASTEXITCODE
+            Write-Host "ISCC exit code: $exitCode"
+            if ($exitCode -ne 0) {
+              Write-Host "ERROR: Inno Setup build failed"
+              exit $exitCode
+            }
+            Write-Host "Checking output..."
+            if (Test-Path Output\RobloxGuardInstaller.exe) {
+              $size = (Get-Item Output\RobloxGuardInstaller.exe).Length / 1MB
+              Write-Host "SUCCESS: RobloxGuardInstaller.exe created ($size MB)"
+            } else {
+              Write-Host "ERROR: RobloxGuardInstaller.exe not found in output"
+              Write-Host "Contents of Output directory:"
+              if (Test-Path Output) {
+                Get-ChildItem Output -Recurse
+              } else {
+                Write-Host "  (directory does not exist)"
+              }
+              exit 1
+            }
+          } finally {
+            Pop-Location
           }
 
       - name: Checksums
