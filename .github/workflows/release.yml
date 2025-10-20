@@ -48,12 +48,22 @@ jobs:
               Set-Content out\checksums.sha256
           }
 
+      - name: Verify artifacts exist
+        shell: pwsh
+        run: |
+          Write-Host "Files in out/publish:"
+          Get-ChildItem out\publish -Recurse -File | ForEach-Object { Write-Host "  $_" }
+          Write-Host "`nFiles in build/inno/Output:"
+          Get-ChildItem build\inno\Output -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
+          Write-Host "`nChecksum file:"
+          Get-Item out\checksums.sha256 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            out\publish\RobloxGuard.exe
-            build\inno\Output\RobloxGuardInstaller.exe
-            out\checksums.sha256
+            out/publish/RobloxGuard.exe
+            build/inno/Output/RobloxGuardInstaller.exe
+            out/checksums.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
