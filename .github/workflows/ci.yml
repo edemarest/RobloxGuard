@@ -33,7 +33,8 @@ jobs:
         run: choco install innosetup --yes
 
       - name: Build installer (Inno)
-        run: '"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" .\build\inno\RobloxGuard.iss'
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ".\build\inno\RobloxGuard.iss"
 
       - name: Checksums
         shell: pwsh
