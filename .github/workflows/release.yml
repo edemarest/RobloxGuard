@@ -27,7 +27,7 @@ jobs:
         run: dotnet test ./src/RobloxGuard.sln -c Release --no-build --verbosity normal
 
       - name: Publish (single-file, self-contained)
-        run: dotnet publish ./src/RobloxGuard.UI/RobloxGuard.UI.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -p:AssemblyName=RobloxGuard -o out\publish
+        run: dotnet publish ./src/RobloxGuard.UI/RobloxGuard.UI.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -o out\publish
 
       - name: Check publish output
         shell: pwsh
