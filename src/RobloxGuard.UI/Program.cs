@@ -379,6 +379,9 @@ class Program
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine($"[{timestamp}] ❌ BLOCKED: Game {evt.PlaceId}");
             Console.ResetColor();
+            
+            // Show alert window on the UI thread
+            ShowAlertWindowThreadSafe();
         }
         else
         {
@@ -387,5 +390,37 @@ class Program
             Console.ResetColor();
         }
         Console.Out.Flush();
+    }
+
+    /// <summary>
+    /// Thread-safe method to show alert window from background monitor thread.
+    /// </summary>
+    static void ShowAlertWindowThreadSafe()
+    {
+        try
+        {
+            // Create and show alert window on its own thread to avoid blocking the monitor
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    var alert = new AlertWindow();
+                    alert.ShowDialog();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AlertWindow] Error showing alert: {ex.Message}");
+                }
+            })
+            {
+                IsBackground = false
+            };
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[OnGameDetected] Error showing alert: {ex.Message}");
+        }
     }
 }
