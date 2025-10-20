@@ -1,6 +1,6 @@
 ; RobloxGuard Inno Setup script (per-user install)
 #define MyAppName "RobloxGuard"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "1.0.0"
 #define MyAppPublisher "Your Company"
 #define MyAppExeName "RobloxGuard.exe"
 
