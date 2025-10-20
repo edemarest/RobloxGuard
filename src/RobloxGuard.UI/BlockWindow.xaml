@@ -1,0 +1,162 @@
+<Window x:Class="RobloxGuard.UI.BlockWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="This Roblox game is blocked"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        Background="#F0F0F0"
+        Topmost="True"
+        Width="500"
+        Height="400"
+        ShowInTaskbar="False">
+    
+    <Border BorderBrush="#E74C3C" BorderThickness="3" CornerRadius="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="60"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="80"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <Border Grid.Row="0" Background="#E74C3C" CornerRadius="5,5,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <TextBlock Grid.Column="0"
+                               Text="⚠️ This Roblox game is blocked"
+                               Foreground="White"
+                               FontSize="18"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center"
+                               Margin="20,0,0,0"/>
+                    
+                    <Button Grid.Column="1"
+                            Content="×"
+                            Foreground="White"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            FontSize="24"
+                            Click="CloseButton_Click"
+                            Cursor="Hand"
+                            Padding="10,5"/>
+                </Grid>
+            </Border>
+
+            <!-- Content -->
+            <StackPanel Grid.Row="1" 
+                        Margin="20"
+                        VerticalAlignment="Center">
+                
+                <TextBlock Text="This experience is on your blocked list."
+                           FontSize="14"
+                           Foreground="#333333"
+                           Margin="0,0,0,10"
+                           TextWrapping="Wrap"/>
+                
+                <TextBlock Text="Ask a parent for permission."
+                           FontSize="14"
+                           Foreground="#666666"
+                           Margin="0,0,0,20"
+                           TextWrapping="Wrap"/>
+
+                <!-- Game Info -->
+                <Border Background="#FFFFFF"
+                        BorderBrush="#DDDDDD"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="15"
+                        Margin="0,0,0,20">
+                    <StackPanel>
+                        <TextBlock Text="Game Information" 
+                                   FontSize="12" 
+                                   FontWeight="Bold"
+                                   Foreground="#555555"
+                                   Margin="0,0,0,8"/>
+                        
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBlock Grid.Column="0"
+                                       Text="Place ID:"
+                                       Foreground="#666666"
+                                       Margin="0,0,10,5"/>
+                            <TextBlock Grid.Column="1"
+                                       x:Name="PlaceIdText"
+                                       Text="Loading..."
+                                       Foreground="#333333"
+                                       FontWeight="Bold"
+                                       Margin="0,0,0,5"/>
+                        </Grid>
+                        
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBlock Grid.Column="0"
+                                       Text="Game Name:"
+                                       Foreground="#666666"
+                                       Margin="0,0,10,0"/>
+                            <TextBlock Grid.Column="1"
+                                       x:Name="GameNameText"
+                                       Text="Loading..."
+                                       Foreground="#333333"
+                                       FontWeight="Bold"
+                                       TextWrapping="Wrap"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Buttons -->
+            <StackPanel Grid.Row="2"
+                        Margin="20"
+                        VerticalAlignment="Bottom">
+                
+                <Button x:Name="FavoritesButton"
+                        Content="🏠 Back to favorites"
+                        Foreground="White"
+                        Background="#3498DB"
+                        BorderThickness="0"
+                        Height="40"
+                        FontSize="13"
+                        FontWeight="Bold"
+                        Click="FavoritesButton_Click"
+                        Cursor="Hand"
+                        Margin="0,0,0,8"/>
+                
+                <Button x:Name="RequestButton"
+                        Content="📧 Request unlock"
+                        Foreground="White"
+                        Background="#9B59B6"
+                        BorderThickness="0"
+                        Height="40"
+                        FontSize="13"
+                        FontWeight="Bold"
+                        Click="RequestButton_Click"
+                        Cursor="Hand"
+                        Margin="0,0,0,8"/>
+                
+                <Button x:Name="PinButton"
+                        Content="🔐 Parent unlock (PIN)"
+                        Foreground="White"
+                        Background="#27AE60"
+                        BorderThickness="0"
+                        Height="40"
+                        FontSize="13"
+                        FontWeight="Bold"
+                        Click="PinButton_Click"
+                        Cursor="Hand"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>
