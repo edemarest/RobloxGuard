@@ -20,7 +20,7 @@ PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64
 
 [Files]
-Source: "out\publish\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+Source: "..\..\out\publish\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{userprograms}\{#MyAppName}\Settings"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--ui"
