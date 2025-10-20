@@ -20,7 +20,4 @@ dist/
 packages/
 
 # Dev checklist files (ignore local notes)
-CHECKLIST.md
-NOTES.md
-TODO.md
-checklist.md
+checklist/

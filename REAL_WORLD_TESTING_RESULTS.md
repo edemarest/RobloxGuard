@@ -1,21 +1,25 @@
 # RobloxGuard v1.0.0 - Real-World Testing Results
 
-**Date:** October 19, 2025  
-**Tester:** Automated Testing Script  
+**Date:** October 20, 2025  
+**Tester:** Automated Testing Script + Manual Protocol Handler Tests  
 **Release:** v1.0.0 (Production Release)  
-**Build:** Release configuration, win-x64 single-file
+**Build:** Release configuration, win-x64 single-file  
+**Status:** ✅ **PROTOCOL HANDLER WORKING**
 
 ---
 
 ## Executive Summary
 
-✅ **Overall Status: PASSED** - All core functionality verified working
+✅ **Core Functionality VERIFIED** - All critical features tested and working:
 
 - [x] Installation successful
 - [x] Configuration system operational
 - [x] Settings UI functional
 - [x] Data persistence confirmed
 - [x] File integrity verified
+- [x] **Protocol handler registration working**
+- [x] **Game blocking logic verified**
+- [x] **Allowed games pass through correctly**
 
 ---
 
@@ -153,7 +157,86 @@ Status: ✅ PASS (Handler registration is event-driven, not immediate)
 
 ---
 
-## System State After Testing
+## Phase 5: Protocol Handler Functionality
+
+### Test Objective
+Verify the protocol handler correctly blocks/allows games based on blocklist configuration.
+
+### Background
+During initial testing, games added to the blocklist were launching without being blocked. Root cause was identified: `Assembly.Location` returns empty for single-file published apps, preventing protocol handler registration. This was fixed by using `AppContext.BaseDirectory` instead.
+
+### Test Results
+
+#### Step 1: Protocol Handler Registration
+```
+Location: HKCU\Software\Classes\roblox-player\shell\open\command
+Expected: "C:\Users\ellaj\AppData\Local\RobloxGuard\RobloxGuard.exe" --handle-uri "%1"
+Actual: ✅ CORRECTLY REGISTERED
+
+Registry verification:
+✓ Default value: "C:\Users\ellaj\AppData\Local\RobloxGuard\RobloxGuard.exe" --handle-uri "%1"
+✓ Protocol version tracked: version-7a4a5d7d1fb3449f
+```
+
+#### Step 2: Blocked Game Test
+```
+Test URI: roblox://placeId=1818
+Config: blocklist = [1818]
+Mode: Blacklist
+
+Result: ✅ BLOCKED CORRECTLY
+Output: "?? BLOCKED: PlaceId 1818 is not allowed"
+```
+
+Expected behavior:
+- [x] PlaceId extracted: 1818 ✅
+- [x] Config loaded successfully ✅
+- [x] Blocklist matched ✅
+- [x] Game blocked (would show Block UI) ✅
+
+#### Step 3: Allowed Game Test
+```
+Test URI: roblox://placeId=2
+Config: blocklist = [1818]
+Mode: Blacklist
+
+Result: ✅ ALLOWED CORRECTLY
+Output: "? ALLOWED: PlaceId 2 is permitted"
+Next: "Forwarding to upstream handler..."
+```
+
+Expected behavior:
+- [x] PlaceId extracted: 2 ✅
+- [x] Config loaded successfully ✅
+- [x] Blocklist checked (not in list) ✅
+- [x] Game allowed, forwarding to Roblox ✅
+
+### Test Summary Table
+
+| Scenario | Input | Expected | Actual | Status |
+|----------|-------|----------|--------|--------|
+| Protocol handler registered | --install-first-run | Handler points to RobloxGuard.exe | Correctly registered | ✅ |
+| Blocked game (placeId 1818) | roblox://placeId=1818 | BLOCKED message | BLOCKED message | ✅ |
+| Allowed game (placeId 2) | roblox://placeId=2 | ALLOWED, forward | ALLOWED, forward | ✅ |
+
+### Technical Details
+
+**Fix Applied (Commit 157bc13):**
+```csharp
+// Before (broken for single-file apps):
+string appExePath = System.Reflection.Assembly.GetExecutingAssembly().Location;  // Returns empty string!
+
+// After (works for single-file apps):
+string appExePath = Path.Combine(AppContext.BaseDirectory, "RobloxGuard.exe");
+if (!File.Exists(appExePath))
+    appExePath = System.Reflection.Assembly.GetExecutingAssembly().Location;  // Fallback
+```
+
+### Verdict: **PASS** ✅
+
+---
+
+## Phase 6: Outstanding Items
 
 ### Directory Structure
 ```

@@ -6,7 +6,7 @@ namespace RobloxGuard.Core;
 public static class InstallerHelper
 {
     /// <summary>
-    /// Performs first-run setup: registers protocol, creates scheduled task, etc.
+    /// Performs first-run setup: registers protocol handler and initializes configuration.
     /// Returns a list of steps that succeeded/failed.
     /// </summary>
     public static (bool success, List<string> messages) PerformFirstRunSetup(string appExePath)
@@ -28,20 +28,7 @@ public static class InstallerHelper
                 return (false, messages);  // This is critical, fail the setup
             }
 
-            // Step 2: Create scheduled task for watcher (OPTIONAL - doesn't fail setup)
-            try
-            {
-                TaskSchedulerHelper.CreateWatcherTask(appExePath);
-                messages.Add("✓ Scheduled task created for auto-start on reboot");
-            }
-            catch (Exception ex)
-            {
-                // Log but don't fail - user can still use the protocol handler
-                messages.Add($"⚠ Scheduled task creation failed (non-critical): {ex.Message}");
-                messages.Add("  Note: Process watcher won't auto-start on reboot. You can run it manually.");
-            }
-
-            // Step 3: Create default configuration if it doesn't exist
+            // Step 2: Create default configuration if it doesn't exist
             try
             {
                 var config = ConfigManager.Load();
@@ -67,19 +54,16 @@ public static class InstallerHelper
     }
 
     /// <summary>
-    /// Performs uninstall cleanup.
+    /// Performs uninstall cleanup: restores original protocol handler.
     /// </summary>
     public static void PerformUninstall()
     {
         try
         {
-            // Step 1: Delete scheduled task
-            TaskSchedulerHelper.DeleteWatcherTask();
-
-            // Step 2: Restore original protocol handler
+            // Step 1: Restore original protocol handler
             RegistryHelper.RestoreProtocolHandler();
 
-            // Step 3: Optional - delete app folder
+            // Step 2: Optional - delete app folder
             // (Installer or user can do this)
         }
         catch (Exception ex)
@@ -89,10 +73,10 @@ public static class InstallerHelper
     }
 
     /// <summary>
-    /// Checks if first-run setup has been completed.
+    /// Checks if RobloxGuard has been installed.
     /// </summary>
     public static bool IsInstalled()
     {
-        return RegistryHelper.IsRobloxGuardInstalled() && TaskSchedulerHelper.TaskExists();
+        return RegistryHelper.IsRobloxGuardInstalled();
     }
 }

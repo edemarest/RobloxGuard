@@ -23,14 +23,6 @@ class Program
                 HandleProtocolUri(args.Length > 1 ? args[1] : null);
                 break;
 
-            case "--test-parse":
-                TestParsing(args.Length > 1 ? args[1] : null);
-                break;
-
-            case "--test-config":
-                TestConfiguration();
-                break;
-
             case "--show-block-ui":
                 if (long.TryParse(args.Length > 1 ? args[1] : "", out var placeId))
                     ShowBlockUI(placeId);
@@ -46,8 +38,8 @@ class Program
                 PerformUninstall();
                 break;
 
-            case "--watch":
-                StartWatcher();
+            case "--monitor-logs":
+                MonitorPlayerLogs();
                 break;
 
             case "--ui":
@@ -72,11 +64,11 @@ class Program
         Console.WriteLine();
         Console.WriteLine("Usage:");
         Console.WriteLine("  RobloxGuard.exe --handle-uri <uri>     Handle roblox-player:// protocol");
-        Console.WriteLine("  RobloxGuard.exe --test-parse <input>   Test placeId parsing");
-        Console.WriteLine("  RobloxGuard.exe --test-config          Test configuration system");
         Console.WriteLine("  RobloxGuard.exe --show-block-ui <id>   Show block UI (testing)");
-        Console.WriteLine("  RobloxGuard.exe --watch                Start process watcher");
+        Console.WriteLine("  RobloxGuard.exe --monitor-logs         Monitor Roblox logs for game joins");
         Console.WriteLine("  RobloxGuard.exe --ui                   Show settings UI");
+        Console.WriteLine("  RobloxGuard.exe --install-first-run    Install RobloxGuard");
+        Console.WriteLine("  RobloxGuard.exe --uninstall            Uninstall RobloxGuard");
         Console.WriteLine("  RobloxGuard.exe --help                 Show this help");
     }
 
@@ -132,109 +124,6 @@ class Program
             Console.WriteLine("Forwarding to upstream handler...");
             // TODO: Forward to upstream handler
         }
-    }
-
-    static void TestParsing(string? input)
-    {
-        Console.WriteLine("=== PlaceId Parser Test ===");
-        Console.WriteLine($"Input: {input}");
-        Console.WriteLine();
-
-        if (string.IsNullOrEmpty(input))
-        {
-            Console.WriteLine("ERROR: No input provided");
-            return;
-        }
-
-        var placeId = PlaceIdParser.Extract(input);
-        Console.WriteLine($"Result: {placeId?.ToString() ?? "None"}");
-
-        var allPlaceIds = PlaceIdParser.ExtractAll(input);
-        if (allPlaceIds.Count > 1)
-        {
-            Console.WriteLine($"All placeIds found: {string.Join(", ", allPlaceIds)}");
-        }
-    }
-
-    static void TestConfiguration()
-    {
-        Console.WriteLine("=== Configuration Test ===");
-        Console.WriteLine($"App data path: {ConfigManager.GetAppDataPath()}");
-        Console.WriteLine($"Config path: {ConfigManager.GetConfigPath()}");
-        Console.WriteLine();
-
-        // Load config
-        var config = ConfigManager.Load();
-        Console.WriteLine("Current configuration:");
-        Console.WriteLine($"  Blocklist count: {config.Blocklist.Count}");
-        Console.WriteLine($"  Whitelist mode: {config.WhitelistMode}");
-        Console.WriteLine($"  Overlay enabled: {config.OverlayEnabled}");
-        Console.WriteLine($"  PIN set: {!string.IsNullOrEmpty(config.ParentPINHash)}");
-
-        if (config.Blocklist.Count > 0)
-        {
-            Console.WriteLine($"  Blocked games: {string.Join(", ", config.Blocklist)}");
-        }
-
-        Console.WriteLine();
-        Console.WriteLine("Testing PIN hashing...");
-        var testPin = "1234";
-        var hash = ConfigManager.HashPIN(testPin);
-        Console.WriteLine($"  Hash: {hash.Substring(0, Math.Min(50, hash.Length))}...");
-        
-        bool verified = ConfigManager.VerifyPIN(testPin, hash);
-        Console.WriteLine($"  Verification: {(verified ? "✅ Success" : "❌ Failed")}");
-
-        bool wrongVerified = ConfigManager.VerifyPIN("9999", hash);
-        Console.WriteLine($"  Wrong PIN: {(wrongVerified ? "❌ SECURITY ISSUE" : "✅ Correctly rejected")}");
-    }
-
-    static void StartWatcher()
-    {
-        Console.WriteLine("=== Process Watcher Mode ===");
-        Console.WriteLine("Watching for RobloxPlayerBeta.exe...");
-        Console.WriteLine();
-        Console.WriteLine("Press Ctrl+C to stop");
-        Console.WriteLine();
-
-        try
-        {
-            using var watcher = new ProcessWatcher(OnProcessBlocked);
-            watcher.Start();
-            Console.WriteLine("✅ Watcher started successfully");
-            Console.WriteLine();
-
-            // Keep running until Ctrl+C
-            while (true)
-            {
-                Thread.Sleep(1000);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"❌ Error starting watcher: {ex.Message}");
-            Console.ResetColor();
-        }
-    }
-
-    static void OnProcessBlocked(ProcessBlockEvent e)
-    {
-        Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] 🚫 BLOCKED PROCESS DETECTED");
-        Console.WriteLine($"  Process ID: {e.ProcessId}");
-        Console.WriteLine($"  PlaceId: {e.PlaceId}");
-        Console.WriteLine($"  Command: {e.CommandLine}");
-        Console.WriteLine();
-
-        if (e.Process != null && !e.Process.HasExited)
-        {
-            Console.WriteLine("  Terminating process...");
-            ProcessWatcher.BlockProcess(e.Process);
-            Console.WriteLine("  ✅ Process terminated");
-        }
-
-        Console.WriteLine("  (Block UI would be shown here)");
-        Console.WriteLine();
     }
 
     static void ShowSettingsUI()
@@ -328,5 +217,51 @@ class Program
             Console.WriteLine($"✗ Uninstallation failed: {ex.Message}");
             Environment.Exit(1);
         }
+    }
+
+    static void MonitorPlayerLogs()
+    {
+        Console.WriteLine("=== Log Monitor Mode ===");
+        Console.WriteLine("Monitoring Roblox player logs for game joins...");
+        Console.WriteLine($"Log directory: {Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Roblox", "logs")}");
+        Console.WriteLine("Press Ctrl+C to stop");
+        Console.WriteLine();
+
+        using (var monitor = new LogMonitor(OnGameDetected))
+        {
+            monitor.Start();
+            try
+            {
+                while (true)
+                {
+                    Thread.Sleep(1000);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("\nLog monitor stopped.");
+            }
+        }
+    }
+
+    static void OnGameDetected(LogBlockEvent evt)
+    {
+        var timestamp = evt.Timestamp.ToString("HH:mm:ss");
+        Console.WriteLine($"\n>>> GAME DETECTED: {evt.PlaceId}");
+        if (evt.IsBlocked)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[{timestamp}] ❌ BLOCKED: Game {evt.PlaceId}");
+            Console.ResetColor();
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"[{timestamp}] ✅ ALLOWED: Game {evt.PlaceId}");
+            Console.ResetColor();
+        }
+        Console.Out.Flush();
     }
 }
