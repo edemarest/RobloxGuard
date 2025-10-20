@@ -1,4 +1,5 @@
 using RobloxGuard.Core;
+using System.Diagnostics;
 using System.IO;
 
 namespace RobloxGuard.UI;
@@ -8,10 +9,10 @@ class Program
     [STAThread]
     static void Main(string[] args)
     {
-        // Console mode for testing during development
+        // Auto-start mode: when EXE clicked with no arguments
         if (args.Length == 0)
         {
-            ShowHelp();
+            HandleAutoStartMode();
             return;
         }
 
@@ -58,14 +59,137 @@ class Program
         }
     }
 
+    /// <summary>
+    /// Handles auto-start mode when EXE is clicked with no arguments.
+    /// Logic:
+    /// 1. If not installed: Show help and exit
+    /// 2. If monitor already running: Show settings UI
+    /// 3. If monitor not running: Start it in background
+    /// </summary>
+    static void HandleAutoStartMode()
+    {
+        try
+        {
+            // Step 1: Check if RobloxGuard is installed
+            if (!InstallerHelper.IsInstalled())
+            {
+                Console.WriteLine("RobloxGuard is not installed yet.");
+                Console.WriteLine("Please run: RobloxGuard.exe --install-first-run");
+                Console.WriteLine();
+                Console.WriteLine("Or use the installer to set up RobloxGuard.");
+                System.Threading.Thread.Sleep(3000);
+                return;
+            }
+
+            // Step 2: Check if monitor is already running
+            if (MonitorStateHelper.IsMonitorRunning())
+            {
+                Console.WriteLine(MonitorStateHelper.GetMonitorStatus());
+                Console.WriteLine("Opening settings UI...");
+                System.Threading.Thread.Sleep(1000);
+                ShowSettingsUI();
+                return;
+            }
+
+            // Step 3: Start monitor in background
+            Console.WriteLine("Starting RobloxGuard monitoring...");
+            StartMonitorInBackground();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in auto-start mode: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+            System.Threading.Thread.Sleep(2000);
+        }
+    }
+
+    /// <summary>
+    /// Starts the LogMonitor process in the background with no visible window.
+    /// </summary>
+    static void StartMonitorInBackground()
+    {
+        try
+        {
+            string appExePath = GetApplicationPath();
+
+            // Create process info for background monitor
+            var psi = new ProcessStartInfo
+            {
+                FileName = appExePath,
+                Arguments = "--monitor-logs",
+                UseShellExecute = true,
+                CreateNoWindow = true,           // Hide console window
+                WindowStyle = ProcessWindowStyle.Hidden,
+                RedirectStandardOutput = false,   // Don't redirect when using UseShellExecute=true
+                RedirectStandardError = false,
+            };
+
+            // Start the process
+            using var process = Process.Start(psi);
+            
+            if (process == null)
+            {
+                Console.WriteLine("✗ Failed to start monitor process");
+                System.Threading.Thread.Sleep(2000);
+                return;
+            }
+
+            Console.WriteLine("✓ RobloxGuard monitoring started in background");
+            Console.WriteLine($"  Process ID: {process.Id}");
+            Console.WriteLine();
+            Console.WriteLine("Monitoring is now active. You can close this window.");
+            System.Threading.Thread.Sleep(2000);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"✗ Failed to start monitor: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"Error details: {ex}");
+            System.Threading.Thread.Sleep(2000);
+        }
+    }
+
+    /// <summary>
+    /// Gets the path to the RobloxGuard executable.
+    /// Handles both single-file published apps and normal builds.
+    /// </summary>
+    static string GetApplicationPath()
+    {
+        // Try AppContext.BaseDirectory first (works for single-file published apps)
+        string appExePath = Path.Combine(AppContext.BaseDirectory, "RobloxGuard.exe");
+        if (File.Exists(appExePath))
+        {
+            return appExePath;
+        }
+
+        // Fallback to Assembly.Location
+        appExePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+        if (File.Exists(appExePath))
+        {
+            return appExePath;
+        }
+
+        // Last resort: Try to find in current directory
+        appExePath = "RobloxGuard.exe";
+        if (File.Exists(appExePath))
+        {
+            return appExePath;
+        }
+
+        throw new InvalidOperationException(
+            "Could not locate RobloxGuard.exe. " +
+            "Tried: AppContext.BaseDirectory, Assembly.Location, and current directory."
+        );
+    }
+
     static void ShowHelp()
     {
         Console.WriteLine("RobloxGuard - Parental Control for Roblox");
         Console.WriteLine();
         Console.WriteLine("Usage:");
+        Console.WriteLine("  RobloxGuard.exe                        Auto-start monitor in background");
         Console.WriteLine("  RobloxGuard.exe --handle-uri <uri>     Handle roblox-player:// protocol");
         Console.WriteLine("  RobloxGuard.exe --show-block-ui <id>   Show block UI (testing)");
-        Console.WriteLine("  RobloxGuard.exe --monitor-logs         Monitor Roblox logs for game joins");
+        Console.WriteLine("  RobloxGuard.exe --monitor-logs         Monitor Roblox logs (foreground)");
         Console.WriteLine("  RobloxGuard.exe --ui                   Show settings UI");
         Console.WriteLine("  RobloxGuard.exe --install-first-run    Install RobloxGuard");
         Console.WriteLine("  RobloxGuard.exe --uninstall            Uninstall RobloxGuard");
