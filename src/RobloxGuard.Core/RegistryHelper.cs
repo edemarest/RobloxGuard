@@ -135,11 +135,26 @@ public static class RegistryHelper
     }
 
     /// <summary>
-    /// Checks if RobloxGuard is currently installed as the protocol handler.
+    /// <summary>
+    /// Checks if RobloxGuard is currently installed.
+    /// Now checks for config file existence instead of protocol handler,
+    /// since protocol handler registration is now optional.
     /// </summary>
     public static bool IsRobloxGuardInstalled()
     {
-        var currentHandler = GetCurrentProtocolHandler();
-        return currentHandler?.Contains("RobloxGuard", StringComparison.OrdinalIgnoreCase) ?? false;
+        try
+        {
+            // Check if config file exists in AppData
+            var configPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "RobloxGuard",
+                "config.json"
+            );
+            return File.Exists(configPath);
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

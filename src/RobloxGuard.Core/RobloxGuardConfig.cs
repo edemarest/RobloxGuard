@@ -6,12 +6,30 @@ using System.Text.Json.Serialization;
 namespace RobloxGuard.Core;
 
 /// <summary>
+/// Represents a blocked game with its placeId and optional name.
+/// </summary>
+public class BlockedGame
+{
+    [JsonPropertyName("placeId")]
+    public long PlaceId { get; set; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+}
+
+/// <summary>
 /// Configuration model for RobloxGuard.
 /// </summary>
 public class RobloxGuardConfig
 {
     /// <summary>
-    /// List of blocked placeIds.
+    /// List of blocked games with names for easy editing.
+    /// </summary>
+    [JsonPropertyName("blockedGames")]
+    public List<BlockedGame> BlockedGames { get; set; } = new();
+
+    /// <summary>
+    /// Legacy blocklist for backward compatibility - automatically synced with BlockedGames.
     /// </summary>
     [JsonPropertyName("blocklist")]
     public List<long> Blocklist { get; set; } = new();
@@ -77,7 +95,16 @@ public static class ConfigManager
 
             var json = File.ReadAllText(ConfigPath);
             var config = JsonSerializer.Deserialize<RobloxGuardConfig>(json);
-            return config ?? CreateDefault();
+            if (config == null)
+                return CreateDefault();
+
+            // Sync Blocklist from BlockedGames for backward compatibility
+            if (config.BlockedGames?.Count > 0)
+            {
+                config.Blocklist = config.BlockedGames.Select(g => g.PlaceId).ToList();
+            }
+
+            return config;
         }
         catch (Exception)
         {
@@ -104,16 +131,26 @@ public static class ConfigManager
     }
 
     /// <summary>
-    /// Creates a default configuration.
+    /// Creates a default configuration with sample blocked games.
     /// </summary>
     private static RobloxGuardConfig CreateDefault()
     {
-        return new RobloxGuardConfig
+        var config = new RobloxGuardConfig
         {
-            Blocklist = new List<long>(),
             OverlayEnabled = true,
-            WhitelistMode = false
+            WhitelistMode = false,
+            BlockedGames = new List<BlockedGame>
+            {
+                new BlockedGame { PlaceId = 15532962292, Name = "BRAINDEAD CONTENT DETECTED" },
+                new BlockedGame { PlaceId = 1818, Name = "Adult Game" },
+                new BlockedGame { PlaceId = 1, Name = "TestPlace" }
+            }
         };
+
+        // Sync blocklist from BlockedGames for IsBlocked checks
+        config.Blocklist = config.BlockedGames.Select(g => g.PlaceId).ToList();
+
+        return config;
     }
 
     /// <summary>

@@ -3,7 +3,7 @@
     <ProjectReference Include="..\RobloxGuard.Core\RobloxGuard.Core.csproj" />
   </ItemGroup>
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>

@@ -6,6 +6,25 @@ namespace RobloxGuard.UI;
 
 class Program
 {
+    private static readonly string _logPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "RobloxGuard",
+        "launcher.log"
+    );
+
+    /// <summary>
+    /// Logs debug info to a file for troubleshooting when console is not visible.
+    /// </summary>
+    static void LogToFile(string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_logPath)!);
+            File.AppendAllText(_logPath, $"[{DateTime.Now:HH:mm:ss}] {message}\n");
+        }
+        catch { }
+    }
+
     [STAThread]
     static void Main(string[] args)
     {
@@ -24,11 +43,8 @@ class Program
                 HandleProtocolUri(args.Length > 1 ? args[1] : null);
                 break;
 
-            case "--show-block-ui":
-                if (long.TryParse(args.Length > 1 ? args[1] : "", out var placeId))
-                    ShowBlockUI(placeId);
-                else
-                    Console.WriteLine("Usage: --show-block-ui <placeId>");
+            case "--register-protocol":
+                RegisterProtocol();
                 break;
 
             case "--install-first-run":
@@ -41,10 +57,6 @@ class Program
 
             case "--monitor-logs":
                 MonitorPlayerLogs();
-                break;
-
-            case "--ui":
-                ShowSettingsUI();
                 break;
 
             case "--help":
@@ -62,33 +74,48 @@ class Program
     /// <summary>
     /// Handles auto-start mode when EXE is clicked with no arguments.
     /// Logic:
-    /// 1. If monitor already running: Show settings UI
+    /// 1. If not installed: Auto-install silently
     /// 2. If monitor not running: Start it in background
-    /// Note: Skip installation check to allow development/testing without registry setup
     /// </summary>
     static void HandleAutoStartMode()
     {
         try
         {
-            // Step 1: Check if monitor is already running
+            LogToFile("=== AUTO-START MODE ===");
+            LogToFile($"ProcessPath: {Environment.ProcessPath}");
+            LogToFile($"BaseDirectory: {AppContext.BaseDirectory}");
+
+            // Step 1: Auto-install if not already installed
+            LogToFile("Checking if installed...");
+            if (!InstallerHelper.IsInstalled())
+            {
+                LogToFile("First run detected. Installing RobloxGuard...");
+                PerformInstall();
+                LogToFile("Installation complete!");
+                System.Threading.Thread.Sleep(500);
+            }
+            else
+            {
+                LogToFile("Already installed.");
+            }
+
+            // Step 2: Check if monitor is already running
+            LogToFile("Checking if monitor is running...");
             if (MonitorStateHelper.IsMonitorRunning())
             {
-                Console.WriteLine(MonitorStateHelper.GetMonitorStatus());
-                Console.WriteLine("Monitor already running. Opening settings UI...");
-                System.Threading.Thread.Sleep(1000);
-                ShowSettingsUI();
+                LogToFile("Monitor already running. Exiting.");
+                System.Threading.Thread.Sleep(500);
                 return;
             }
 
-            // Step 2: Start monitor in background (skip installation check for development)
-            Console.WriteLine("Starting RobloxGuard monitoring...");
+            // Step 3: Start monitor in background
+            LogToFile("Starting monitor in background...");
             StartMonitorInBackground();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error in auto-start mode: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
-            System.Threading.Thread.Sleep(2000);
+            LogToFile($"ERROR: {ex.Message}");
+            LogToFile($"Stack: {ex.StackTrace}");
         }
     }
 
@@ -100,6 +127,7 @@ class Program
         try
         {
             string appExePath = GetApplicationPath();
+            LogToFile($"App path resolved to: {appExePath}");
 
             // Create process info for background monitor
             var psi = new ProcessStartInfo
@@ -107,32 +135,31 @@ class Program
                 FileName = appExePath,
                 Arguments = "--monitor-logs",
                 UseShellExecute = true,
-                CreateNoWindow = true,           // Hide console window
+                CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
-                RedirectStandardOutput = false,   // Don't redirect when using UseShellExecute=true
+                RedirectStandardOutput = false,
                 RedirectStandardError = false,
             };
+
+            LogToFile($"Starting process: {psi.FileName} {psi.Arguments}");
 
             // Start the process
             using var process = Process.Start(psi);
             
             if (process == null)
             {
-                Console.WriteLine("✗ Failed to start monitor process");
+                LogToFile("ERROR: Failed to start monitor process (returned null)");
                 System.Threading.Thread.Sleep(2000);
                 return;
             }
 
-            Console.WriteLine("✓ RobloxGuard monitoring started in background");
-            Console.WriteLine($"  Process ID: {process.Id}");
-            Console.WriteLine();
-            Console.WriteLine("Monitoring is now active. You can close this window.");
+            LogToFile($"✓ Monitor started: PID {process.Id}");
             System.Threading.Thread.Sleep(2000);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"✗ Failed to start monitor: {ex.Message}");
-            System.Diagnostics.Debug.WriteLine($"Error details: {ex}");
+            LogToFile($"ERROR starting monitor: {ex.Message}");
+            LogToFile($"Stack: {ex.StackTrace}");
             System.Threading.Thread.Sleep(2000);
         }
     }
@@ -143,7 +170,13 @@ class Program
     /// </summary>
     static string GetApplicationPath()
     {
-        // Try AppContext.BaseDirectory first (works for single-file published apps)
+        // For single-file published apps, use Environment.ProcessPath (most reliable)
+        if (!string.IsNullOrEmpty(Environment.ProcessPath) && File.Exists(Environment.ProcessPath))
+        {
+            return Environment.ProcessPath;
+        }
+
+        // Try AppContext.BaseDirectory
         string appExePath = Path.Combine(AppContext.BaseDirectory, "RobloxGuard.exe");
         if (File.Exists(appExePath))
         {
@@ -176,11 +209,10 @@ class Program
         Console.WriteLine();
         Console.WriteLine("Usage:");
         Console.WriteLine("  RobloxGuard.exe                        Auto-start monitor in background");
-        Console.WriteLine("  RobloxGuard.exe --handle-uri <uri>     Handle roblox-player:// protocol");
-        Console.WriteLine("  RobloxGuard.exe --show-block-ui <id>   Show block UI (testing)");
         Console.WriteLine("  RobloxGuard.exe --monitor-logs         Monitor Roblox logs (foreground)");
-        Console.WriteLine("  RobloxGuard.exe --ui                   Show settings UI");
-        Console.WriteLine("  RobloxGuard.exe --install-first-run    Install RobloxGuard");
+        Console.WriteLine("  RobloxGuard.exe --register-protocol    Enable pre-launch game blocking");
+        Console.WriteLine("  RobloxGuard.exe --handle-uri <uri>     Handle roblox-player:// protocol");
+        Console.WriteLine("  RobloxGuard.exe --install-first-run    Perform first-run setup");
         Console.WriteLine("  RobloxGuard.exe --uninstall            Uninstall RobloxGuard");
         Console.WriteLine("  RobloxGuard.exe --help                 Show this help");
     }
@@ -239,76 +271,35 @@ class Program
         }
     }
 
-    static void ShowSettingsUI()
-    {
-        var app = new System.Windows.Application();
-        var window = new SettingsWindow();
-        app.Run(window);
-    }
-
-    static void ShowBlockUI(long placeId)
-    {
-        var app = new System.Windows.Application();
-        var window = new BlockWindow(placeId);
-        
-        if (window.ShowDialog() == true && window.IsUnlocked)
-        {
-            Console.WriteLine($"✅ User entered correct PIN - game unlocked");
-        }
-        else
-        {
-            Console.WriteLine($"❌ Game blocked - access denied");
-        }
-    }
-
     static void PerformInstall()
     {
         try
         {
-            Console.WriteLine("Starting RobloxGuard installation...");
+            LogToFile("PerformInstall: Starting...");
             
-            // Get app executable path
-            // Use AppContext.BaseDirectory for single-file published apps
-            string appExePath = Path.Combine(AppContext.BaseDirectory, "RobloxGuard.exe");
-            if (!File.Exists(appExePath))
-            {
-                // Fallback to Assembly.Location if BaseDirectory fails
-                appExePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            }
-            if (string.IsNullOrEmpty(appExePath) || !File.Exists(appExePath))
-            {
-                Console.WriteLine("ERROR: Could not determine application path.");
-                Environment.Exit(1);
-                return;
-            }
+            // Get app executable path - use GetApplicationPath() for consistency
+            string appExePath = GetApplicationPath();
+            LogToFile($"PerformInstall: App path = {appExePath}");
 
             // Perform installation
             var (setupSuccess, setupMessages) = InstallerHelper.PerformFirstRunSetup(appExePath);
             
-            // Display setup results
-            Console.WriteLine();
+            // Log setup results
+            LogToFile($"PerformInstall: Success = {setupSuccess}");
             foreach (var message in setupMessages)
             {
-                Console.WriteLine(message);
+                LogToFile($"  {message}");
             }
 
-            if (setupSuccess)
+            if (!setupSuccess)
             {
-                Console.WriteLine();
-                Console.WriteLine("✓ Installation completed successfully!");
-                Environment.Exit(0);
-            }
-            else
-            {
-                Console.WriteLine();
-                Console.WriteLine("✗ Installation failed. Please check the errors above.");
-                Environment.Exit(1);
+                LogToFile("PerformInstall: FAILED!");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"✗ Installation failed: {ex.Message}");
-            Environment.Exit(1);
+            LogToFile($"PerformInstall ERROR: {ex.Message}");
+            LogToFile($"Stack: {ex.StackTrace}");
         }
     }
 
@@ -328,6 +319,55 @@ class Program
         catch (Exception ex)
         {
             Console.WriteLine($"✗ Uninstallation failed: {ex.Message}");
+            Environment.Exit(1);
+        }
+    }
+
+    static void RegisterProtocol()
+    {
+        try
+        {
+            Console.WriteLine("Registering protocol handler...");
+            
+            // Get app executable path
+            string appExePath = Path.Combine(AppContext.BaseDirectory, "RobloxGuard.exe");
+            if (!File.Exists(appExePath))
+            {
+                appExePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            }
+            if (string.IsNullOrEmpty(appExePath) || !File.Exists(appExePath))
+            {
+                Console.WriteLine("ERROR: Could not determine application path.");
+                Environment.Exit(1);
+                return;
+            }
+
+            // Register protocol handler
+            var (success, messages) = InstallerHelper.RegisterProtocolHandler(appExePath);
+            
+            // Display results
+            Console.WriteLine();
+            foreach (var message in messages)
+            {
+                Console.WriteLine(message);
+            }
+
+            if (success)
+            {
+                Console.WriteLine();
+                Console.WriteLine("✓ Protocol handler registered successfully!");
+                Environment.Exit(0);
+            }
+            else
+            {
+                Console.WriteLine();
+                Console.WriteLine("✗ Protocol registration failed. Please check the errors above.");
+                Environment.Exit(1);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"✗ Protocol registration failed: {ex.Message}");
             Environment.Exit(1);
         }
     }

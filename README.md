@@ -1,25 +1,50 @@
 # RobloxGuard
 
-Per-user Windows parental control for Roblox that blocks specific experiences (by `placeId`) using:
-- A protocol shim for `roblox-player:` (primary, pre-launch block)
-- A process watcher fallback for `RobloxPlayerBeta.exe`
-- An optional topmost overlay to hide content (non-injection)
+Windows parental control for Roblox. Blocks specific games by `placeId`.
 
-## Quick Start
-1. Install .NET 8 SDK and Git.
-2. Open the repo in VS Code or Visual Studio.
-3. Read `.github/copilot-instructions.md` (source of truth for Copilot).
-4. Build: `dotnet build` then publish: `dotnet publish -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -o out/publish`.
-5. Package: use Inno Setup script in `build/inno/RobloxGuard.iss`.
-6. Install and test: the installer registers the per-user protocol and a logon watcher task.
+## Installation
 
-## Project layout
-- `src/RobloxGuard.Core` — logic (URI parsing, watcher, registry/scheduler helpers, logging)
-- `src/RobloxGuard.UI` — WPF/WinForms UI for settings + block modal (stub)
-- `src/RobloxGuard.Installers` — helpers for first-run/uninstall (stub)
-- `docs` — specs Copilot relies on (protocols, registry, UX, parsing fixtures)
-- `.github` — Copilot instructions + Actions workflows
-- `build/inno` — Inno Setup script for per-user installer
+1. Download `RobloxGuard.exe` from [releases](https://github.com/edemarest/RobloxGuard/releases)
+2. Double-click to run (auto-installs on first run)
+3. Edit `%LOCALAPPDATA%\RobloxGuard\config.json` to change blocked games
 
-## License
-Choose a license (MIT recommended) and add it as `LICENSE`.
+Done! The log monitor runs automatically in the background.
+
+## Commands
+
+```powershell
+# First run (auto-starts monitoring)
+RobloxGuard.exe
+
+# Enable pre-launch blocking (optional)
+RobloxGuard.exe --register-protocol
+
+# Uninstall (removes app, restores original handler)
+RobloxGuard.exe --uninstall
+```
+
+## How It Works
+
+- **Log Monitor** (always): Watches Roblox logs and terminates blocked games automatically
+- **Alert Window**: Shows red "🧠❌ BRAINDEAD CONTENT DETECTED" for 20 seconds when a game is blocked
+- **Config**: Edit `%LOCALAPPDATA%\RobloxGuard\config.json` to manage blocked games
+
+Example config:
+
+```json
+{
+  "blockedGames": [
+    {"placeId": 15532962292, "name": "BRAINDEAD CONTENT DETECTED"}
+  ],
+  "overlayEnabled": true,
+  "whitelistMode": false
+}
+```
+
+## Features
+
+- 🎯 Simple JSON config (no UI needed)
+- 🚫 Blocks by game ID (placeId)
+- 📝 Pre-configured with sensible defaults
+- 💻 Single-file EXE (154 MB, no dependencies)
+- 🔒 Per-user install (no admin needed)

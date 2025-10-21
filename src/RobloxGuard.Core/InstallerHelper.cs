@@ -6,7 +6,8 @@ namespace RobloxGuard.Core;
 public static class InstallerHelper
 {
     /// <summary>
-    /// Performs first-run setup: registers protocol handler and initializes configuration.
+    /// Performs first-run setup: initializes configuration only.
+    /// Protocol handler registration is now optional and must be done explicitly.
     /// Returns a list of steps that succeeded/failed.
     /// </summary>
     public static (bool success, List<string> messages) PerformFirstRunSetup(string appExePath)
@@ -15,28 +16,11 @@ public static class InstallerHelper
         
         try
         {
-            // Step 1: Backup and register protocol handler (CRITICAL - must succeed)
-            try
-            {
-                RegistryHelper.BackupCurrentProtocolHandler();
-                RegistryHelper.InstallProtocolHandler(appExePath);
-                messages.Add("✓ Protocol handler registered successfully");
-            }
-            catch (Exception ex)
-            {
-                messages.Add($"✗ Protocol handler registration failed: {ex.Message}");
-                return (false, messages);  // This is critical, fail the setup
-            }
-
-            // Step 2: Create default configuration if it doesn't exist
+            // Step 1: Create default configuration if it doesn't exist
             try
             {
                 var config = ConfigManager.Load();
-                if (string.IsNullOrEmpty(config.ParentPINHash))
-                {
-                    // No PIN set yet - will prompt user via UI
-                    ConfigManager.Save(config);
-                }
+                ConfigManager.Save(config);
                 messages.Add("✓ Configuration initialized");
             }
             catch (Exception ex)
@@ -44,11 +28,43 @@ public static class InstallerHelper
                 messages.Add($"⚠ Configuration setup warning: {ex.Message}");
             }
 
+            messages.Add("✓ RobloxGuard is ready!");
+            messages.Add("");
+            messages.Add("ℹ The log monitor will run automatically at startup.");
+            messages.Add("ℹ To enable protocol handler (pre-launch blocking), run:");
+            messages.Add($"    {Path.GetFileName(appExePath)} --register-protocol");
+
             return (true, messages);
         }
         catch (Exception ex)
         {
             messages.Add($"✗ Unexpected error during setup: {ex.Message}");
+            return (false, messages);
+        }
+    }
+
+    /// <summary>
+    /// Registers RobloxGuard as the protocol handler for roblox-player://.
+    /// This enables pre-launch game blocking.
+    /// </summary>
+    public static (bool success, List<string> messages) RegisterProtocolHandler(string appExePath)
+    {
+        var messages = new List<string>();
+        
+        try
+        {
+            // Backup current handler first
+            RegistryHelper.BackupCurrentProtocolHandler();
+            RegistryHelper.InstallProtocolHandler(appExePath);
+            messages.Add("✓ Protocol handler registered successfully");
+            messages.Add("");
+            messages.Add("ℹ Pre-launch game blocking is now enabled.");
+            messages.Add("ℹ Games will be blocked BEFORE they launch.");
+            return (true, messages);
+        }
+        catch (Exception ex)
+        {
+            messages.Add($"✗ Protocol handler registration failed: {ex.Message}");
             return (false, messages);
         }
     }

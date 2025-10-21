@@ -10,7 +10,7 @@ namespace RobloxGuard.UI;
 public partial class AlertWindow : Window
 {
     private DispatcherTimer? _countdownTimer;
-    private int _remainingSeconds = 5;  // Increased from 3 to 5 seconds
+    private int _remainingSeconds = 20;  // Changed from 5 to 20 seconds
 
     public AlertWindow()
     {
@@ -19,13 +19,24 @@ public partial class AlertWindow : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        // Play red flash animation
+        // Play red flash animation on window background
         try
         {
             var storyboard = FindResource("RedFlash") as System.Windows.Media.Animation.Storyboard;
             if (storyboard != null)
             {
                 storyboard.Begin(this);
+            }
+        }
+        catch { }
+
+        // Play text flashing animation on main message
+        try
+        {
+            var textFlash = FindResource("TextFlash") as System.Windows.Media.Animation.Storyboard;
+            if (textFlash != null)
+            {
+                textFlash.Begin(this);
             }
         }
         catch { }
@@ -42,11 +53,12 @@ public partial class AlertWindow : Window
         _countdownTimer.Tick += (s, args) =>
         {
             _remainingSeconds--;
-            if (_remainingSeconds > 0)
+            var countdownText = FindName("CountdownText") as System.Windows.Controls.TextBlock;
+            if (countdownText != null && _remainingSeconds > 0)
             {
-                CountdownText.Text = $"Closing in {_remainingSeconds} second{(_remainingSeconds != 1 ? "s" : "")}...";
+                countdownText.Text = $"Closing in {_remainingSeconds} second{(_remainingSeconds != 1 ? "s" : "")}...";
             }
-            else
+            else if (_remainingSeconds <= 0)
             {
                 _countdownTimer.Stop();
                 Close();
@@ -54,7 +66,7 @@ public partial class AlertWindow : Window
         };
         _countdownTimer.Start();
 
-        Console.WriteLine($"[AlertWindow] Window loaded, will close in {_remainingSeconds} seconds");
+        Console.WriteLine($"[AlertWindow] Window loaded with BRAINDEAD CONTENT message, will close in {_remainingSeconds} seconds");
     }
 
     protected override void OnClosed(EventArgs e)

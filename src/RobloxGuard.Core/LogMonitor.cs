@@ -20,6 +20,7 @@ public class LogMonitor : IDisposable
     private FileSystemWatcher? _fileWatcher;
     private StreamReader? _logReader;
     private string? _currentLogFile;
+    private string? _lastLoggedFile;  // Track last logged file to avoid spam
     private bool _isRunning;
     private readonly Action<LogBlockEvent> _onGameDetected;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -118,6 +119,7 @@ public class LogMonitor : IDisposable
 
     /// <summary>
     /// Switches to a new log file and resets read position.
+    /// On first start, preserves position to skip old entries.
     /// </summary>
     private void SwitchToNewLogFile(string newLogFile)
     {
@@ -132,7 +134,14 @@ public class LogMonitor : IDisposable
             System.Console.WriteLine($"[LogMonitor] === SWITCHING TO NEW LOG FILE: {Path.GetFileName(newLogFile)} ===");
             _logReader?.Dispose();
             _currentLogFile = newLogFile;
-            _lastPosition = 0; // Reset to read entire new file from start
+            
+            // On first start, don't reset position - let ReadNewLinesFromFile handle it
+            if (!_isFirstStart)
+            {
+                _lastPosition = 0; // Reset to read entire new file from start
+            }
+            // If _isFirstStart is true, keep _lastPosition = 0 but ReadNewLinesFromFile will
+            // skip to EOF, so old entries won't be processed
         }
         catch (Exception ex)
         {
@@ -185,7 +194,6 @@ public class LogMonitor : IDisposable
             // IMPORTANT: Sort by BOTH creation time (in filename) AND LastWriteTime
             // because Roblox creates new files for each game session
             var allFiles = Directory.GetFiles(_logDirectory, "*_Player_*_last.log");
-            System.Console.WriteLine($"[LogMonitor] Found {allFiles.Length} log files");
             
             var logFiles = allFiles
                 .OrderByDescending(f => 
@@ -204,10 +212,12 @@ public class LogMonitor : IDisposable
                 })
                 .FirstOrDefault();
 
-            if (logFiles != null)
-                System.Console.WriteLine($"[LogMonitor] Selected log file: {Path.GetFileName(logFiles)}");
-            else
-                System.Console.WriteLine($"[LogMonitor] No log files found");
+            // Only log if file changed (avoid spam)
+            if (logFiles != null && logFiles != _lastLoggedFile)
+            {
+                System.Console.WriteLine($"[LogMonitor] Monitoring: {Path.GetFileName(logFiles)}");
+                _lastLoggedFile = logFiles;
+            }
 
             return logFiles;
         }
@@ -221,13 +231,29 @@ public class LogMonitor : IDisposable
 
     /// <summary>
     /// Background task to monitor log file for new game joins.
+    /// Also polls for new log files to detect game launches.
     /// </summary>
     private async Task MonitorLogsAsync(CancellationToken cancellationToken)
     {
+        int pollCounter = 0;
+        
         while (!cancellationToken.IsCancellationRequested && _isRunning)
         {
             try
             {
+                // Periodically check for NEW log files (every 500ms poll = every 5 iterations = 500ms)
+                pollCounter++;
+                if (pollCounter >= 5)
+                {
+                    pollCounter = 0;
+                    var newestLogFile = GetCurrentLogFile();
+                    if (newestLogFile != null && newestLogFile != _currentLogFile)
+                    {
+                        System.Console.WriteLine($"[LogMonitor] [POLLING] Detected newer log file!");
+                        SwitchToNewLogFile(newestLogFile);
+                    }
+                }
+                
                 // Use FileSystemWatcher-detected file, or fall back to polling
                 var logFile = _currentLogFile ?? GetCurrentLogFile();
                 if (logFile == null)
@@ -265,7 +291,8 @@ public class LogMonitor : IDisposable
 
     /// <summary>
     /// Reads new lines from the log file starting from last known position.
-    /// On first start, skip all existing entries to only detect new game joins.
+    /// On first start OR when switching to a new file, skip all existing entries 
+    /// to only detect NEW game joins after monitor starts.
     /// </summary>
     private void ReadNewLinesFromFile(string logFile)
     {
@@ -282,6 +309,16 @@ public class LogMonitor : IDisposable
                     _lastPosition = reader.BaseStream.Position;
                     _isFirstStart = false;
                     System.Console.WriteLine("[LogMonitor] Startup: Skipping existing log entries, monitoring for new games only");
+                    return;
+                }
+
+                // If _lastPosition is 0 and we haven't just started, this is a NEW file
+                // Skip to EOF to avoid processing old entries from the new file
+                if (_lastPosition == 0)
+                {
+                    reader.BaseStream.Seek(0, SeekOrigin.End);
+                    _lastPosition = reader.BaseStream.Position;
+                    System.Console.WriteLine("[LogMonitor] New log file detected, skipping existing entries");
                     return;
                 }
 

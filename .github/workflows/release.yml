@@ -20,93 +20,43 @@ jobs:
       - name: Restore
         run: dotnet restore ./src/RobloxGuard.sln
 
-      - name: Build
+      - name: Build (Release)
         run: dotnet build ./src/RobloxGuard.sln -c Release --no-restore
 
-      - name: Test
+      - name: Run Tests
         run: dotnet test ./src/RobloxGuard.sln -c Release --no-build --verbosity normal
 
-      - name: Publish (single-file, self-contained)
-        run: dotnet publish ./src/RobloxGuard.UI/RobloxGuard.UI.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -o out\publish
+      - name: Publish Single-File EXE
+        run: dotnet publish ./src/RobloxGuard.UI/RobloxGuard.UI.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -o out/publish
 
-      - name: Check publish output
+      - name: Verify EXE Built Successfully
         shell: pwsh
         run: |
-          if (Test-Path out\publish\RobloxGuard.exe) {
-            Write-Host "✓ RobloxGuard.exe found"
-            Get-Item out\publish\RobloxGuard.exe | ForEach-Object { Write-Host "  Size: $($_.Length / 1MB) MB" }
+          $exe = "out/publish/RobloxGuard.exe"
+          if (Test-Path $exe) {
+            $size = [math]::Round((Get-Item $exe).Length / 1MB, 2)
+            Write-Host "✓ EXE built successfully: $size MB"
           } else {
-            Write-Host "✗ RobloxGuard.exe NOT found!"
-            Write-Host "Contents of out\publish:"
-            Get-ChildItem out\publish -Recurse | ForEach-Object { Write-Host "  $_" }
+            Write-Host "✗ EXE build failed!"
             exit 1
           }
 
-      - name: Install Inno Setup
-        run: choco install innosetup --yes
-
-      - name: Build installer (Inno)
-        shell: powershell
-        continue-on-error: true
-        run: |
-          Push-Location build\inno
-          try {
-            $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-            if (-not (Test-Path $isccPath)) {
-              Write-Host "WARNING: ISCC.exe not found at $isccPath - installer skipped"
-              exit 0
-            }
-            Write-Host "Running ISCC.exe from $(Get-Location)..."
-            & $isccPath ".\RobloxGuard.iss" 2>&1
-            $exitCode = $LASTEXITCODE
-            Write-Host "ISCC exit code: $exitCode"
-            if ($exitCode -ne 0) {
-              Write-Host "WARNING: Inno Setup build failed - continuing with EXE only"
-              exit 0
-            }
-            Write-Host "Checking output..."
-            if (Test-Path Output\RobloxGuardInstaller.exe) {
-              $size = (Get-Item Output\RobloxGuardInstaller.exe).Length / 1MB
-              Write-Host "SUCCESS: RobloxGuardInstaller.exe created ($size MB)"
-            } else {
-              Write-Host "WARNING: RobloxGuardInstaller.exe not found in output"
-              exit 0
-            }
-          } finally {
-            Pop-Location
-          }
-
-      - name: Checksums
+      - name: Generate SHA256 Checksums
         shell: pwsh
         run: |
-          $files = @()
-          $files += Get-ChildItem out\publish -Recurse -File -ErrorAction SilentlyContinue
-          $files += Get-ChildItem build\inno\Output -Recurse -File -ErrorAction SilentlyContinue
-          if ($files.Count -gt 0) {
-            $files | Get-FileHash -Algorithm SHA256 | `
-              ForEach-Object { "$($_.Hash)  $($_.Path)" } | `
-              Set-Content out\checksums.sha256
-            Write-Host "Generated SHA256 checksums for $($files.Count) file(s)"
-          } else {
-            Write-Host "WARNING: No files found for checksums"
+          $exe = "out/publish/RobloxGuard.exe"
+          if (Test-Path $exe) {
+            $hash = (Get-FileHash -Path $exe -Algorithm SHA256).Hash
+            "$hash  RobloxGuard.exe" | Out-File out/RobloxGuard.exe.sha256
+            Write-Host "✓ Checksum generated"
           }
-
-      - name: Verify artifacts exist
-        shell: pwsh
-        run: |
-          Write-Host "Files in out/publish:"
-          Get-ChildItem out\publish -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
-          Write-Host "`nFiles in build/inno/Output:"
-          Get-ChildItem build\inno\Output -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
-          Write-Host "`nChecksum file:"
-          Get-Item out\checksums.sha256 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            out\publish\RobloxGuard.exe
-            out\checksums.sha256
+            out/publish/RobloxGuard.exe
+            out/RobloxGuard.exe.sha256
           draft: false
           prerelease: false
         env:

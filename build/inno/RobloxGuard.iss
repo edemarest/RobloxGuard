@@ -23,7 +23,7 @@ ArchitecturesInstallIn64BitMode=x64
 Source: "..\..\out\publish\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{userprograms}\{#MyAppName}\Settings"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--ui"
+Name: "{userprograms}\{#MyAppName}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Parameters: "--install-first-run"; Flags: postinstall skipifsilent nowait

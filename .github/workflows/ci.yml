@@ -1,4 +1,4 @@
-name: Build & Package RobloxGuard
+name: Build & Test RobloxGuard
 on:
   push:
     branches: [ main ]
@@ -21,39 +21,29 @@ jobs:
       - name: Restore
         run: dotnet restore ./src/RobloxGuard.sln
 
-      - name: Build
+      - name: Build (Release)
         run: dotnet build ./src/RobloxGuard.sln -c Release --no-restore
 
-      - name: Test
+      - name: Run Tests
         run: dotnet test ./src/RobloxGuard.sln -c Release --no-build --verbosity normal
 
-      - name: Publish (single-file, self-contained)
-        run: dotnet publish ./src/RobloxGuard.UI/RobloxGuard.UI.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -o out\publish
+      - name: Publish Single-File EXE
+        run: dotnet publish ./src/RobloxGuard.UI/RobloxGuard.UI.csproj -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true -o out/publish
 
-      - name: Install Inno Setup
-        run: choco install innosetup --yes
-
-      - name: Build installer (Inno)
-        run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ".\build\inno\RobloxGuard.iss"
-
-      - name: Checksums
+      - name: Verify EXE
         shell: pwsh
         run: |
-          $files = @()
-          $files += Get-ChildItem out\publish -Recurse -File
-          $files += Get-ChildItem build\inno\Output -Recurse -File -ErrorAction SilentlyContinue
-          if ($files.Count -gt 0) {
-            $files | Get-FileHash -Algorithm SHA256 | `
-              ForEach-Object { "$($_.Hash)  $($_.Path)" } | `
-              Set-Content out\checksums.sha256
+          $exe = "out/publish/RobloxGuard.exe"
+          if (Test-Path $exe) {
+            $size = [math]::Round((Get-Item $exe).Length / 1MB, 2)
+            Write-Host "✓ Build successful: RobloxGuard.exe ($size MB)"
+          } else {
+            Write-Host "✗ Build failed: RobloxGuard.exe not found"
+            exit 1
           }
 
-      - name: Upload artifacts
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: RobloxGuard-artifacts
-          path: |
-            out\publish\**
-            build\inno\Output\**
-            out\checksums.sha256
+          name: RobloxGuard-Build
+          path: out/publish/RobloxGuard.exe
