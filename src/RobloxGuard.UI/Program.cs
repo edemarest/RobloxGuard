@@ -307,19 +307,31 @@ class Program
     {
         try
         {
-            Console.WriteLine("Uninstalling RobloxGuard...");
+            LogToFile("=== UNINSTALL MODE ===");
+            LogToFile("Starting uninstallation...");
             
             // Perform uninstallation
             InstallerHelper.PerformUninstall();
             
-            Console.WriteLine("✓ Uninstallation completed successfully!");
-            Console.WriteLine($"  • Protocol handler restored");
-            Console.WriteLine($"  • Scheduled task removed");
+            LogToFile("✓ Protocol handler restored");
+            
+            // Delete AppData folder
+            var appDataPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "RobloxGuard"
+            );
+            if (Directory.Exists(appDataPath))
+            {
+                Directory.Delete(appDataPath, true);
+                LogToFile("✓ Application folder deleted");
+            }
+            
+            LogToFile("✓ Uninstallation completed successfully!");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"✗ Uninstallation failed: {ex.Message}");
-            Environment.Exit(1);
+            LogToFile($"✗ Uninstallation failed: {ex.Message}");
+            LogToFile($"Stack: {ex.StackTrace}");
         }
     }
 

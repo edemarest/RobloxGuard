@@ -23,6 +23,8 @@ RobloxGuard.exe --register-protocol
 RobloxGuard.exe --uninstall
 ```
 
+**Note:** Use the command line to uninstall, not Windows Settings. Settings may show an error about a missing uninstaller file.
+
 ## How It Works
 
 - **Log Monitor** (always): Watches Roblox logs and terminates blocked games automatically
