@@ -12,18 +12,23 @@ Done! The log monitor runs automatically in the background.
 
 ## Commands
 
+Run from PowerShell in the Desktop folder where `RobloxGuard.exe` is located:
+
 ```powershell
 # First run (auto-starts monitoring)
-RobloxGuard.exe
+.\RobloxGuard.exe
 
 # Enable pre-launch blocking (optional)
-RobloxGuard.exe --register-protocol
+.\RobloxGuard.exe --register-protocol
 
 # Uninstall (removes app, restores original handler)
-RobloxGuard.exe --uninstall
+.\RobloxGuard.exe --uninstall
 ```
 
-**Note:** Use the command line to uninstall, not Windows Settings. Settings may show an error about a missing uninstaller file.
+**Note:** 
+- Use `.\` prefix in PowerShell (required in current directory)
+- Use the command line to uninstall, not Windows Settings
+- Settings may show an error about a missing uninstaller file (ignore it)
 
 ## How It Works
 

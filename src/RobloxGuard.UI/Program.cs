@@ -310,23 +310,54 @@ class Program
             LogToFile("=== UNINSTALL MODE ===");
             LogToFile("Starting uninstallation...");
             
-            // Perform uninstallation
-            InstallerHelper.PerformUninstall();
+            // Step 1: Kill any running RobloxGuard processes
+            try
+            {
+                var processes = Process.GetProcessesByName("RobloxGuard");
+                foreach (var proc in processes)
+                {
+                    // Don't kill ourselves, only background monitors
+                    if (proc.Id != Environment.ProcessId)
+                    {
+                        proc.Kill();
+                        LogToFile($"✓ Killed monitor process (PID {proc.Id})");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogToFile($"Warning: Could not kill monitor process: {ex.Message}");
+            }
             
+            // Step 2: Perform uninstallation (registry restore)
+            InstallerHelper.PerformUninstall();
             LogToFile("✓ Protocol handler restored");
             
-            // Delete AppData folder
+            // Step 3: Delete AppData folder
             var appDataPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "RobloxGuard"
             );
+            
+            // Flush logs before deleting folder
+            LogToFile("✓ Uninstallation completed successfully!");
+            LogToFile("Cleaning up...");
+            
+            // Give the log system time to flush
+            System.Threading.Thread.Sleep(100);
+            
             if (Directory.Exists(appDataPath))
             {
-                Directory.Delete(appDataPath, true);
-                LogToFile("✓ Application folder deleted");
+                try
+                {
+                    // Delete the entire folder including logs
+                    Directory.Delete(appDataPath, true);
+                }
+                catch
+                {
+                    // Silently ignore - folder might be in use briefly
+                }
             }
-            
-            LogToFile("✓ Uninstallation completed successfully!");
         }
         catch (Exception ex)
         {
