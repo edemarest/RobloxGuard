@@ -28,6 +28,27 @@ class Program
     [STAThread]
     static void Main(string[] args)
     {
+        // Register global exception handler to prevent silent crashes
+        AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
+        {
+            LogToFile($"[GLOBAL] UNHANDLED EXCEPTION: {e.ExceptionObject.GetType().Name}");
+            if (e.ExceptionObject is Exception ex)
+            {
+                LogToFile($"[GLOBAL] Message: {ex.Message}");
+                LogToFile($"[GLOBAL] StackTrace: {ex.StackTrace}");
+            }
+            LogToFile($"[GLOBAL] IsTerminating: {e.IsTerminating}");
+        };
+
+        // Register on dispatch unhandled exception for UI thread
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.UnhandledException += (sender, e) =>
+        {
+            LogToFile($"[DISPATCHER] UNHANDLED EXCEPTION: {e.Exception.GetType().Name}");
+            LogToFile($"[DISPATCHER] Message: {e.Exception.Message}");
+            LogToFile($"[DISPATCHER] StackTrace: {e.Exception.StackTrace}");
+            e.Handled = true; // Prevent app crash
+        };
+
         // Auto-start mode: when EXE clicked with no arguments
         if (args.Length == 0)
         {
@@ -417,6 +438,7 @@ class Program
 
     static void MonitorPlayerLogs()
     {
+        LogToFile("=== LOG MONITOR MODE STARTING ===");
         Console.WriteLine("=== Log Monitor Mode ===");
         Console.WriteLine("Monitoring Roblox player logs for game joins...");
         Console.WriteLine($"Log directory: {Path.Combine(
@@ -427,41 +449,73 @@ class Program
 
         using (var monitor = new LogMonitor(OnGameDetected))
         {
-            monitor.Start();
             try
             {
-                while (true)
+                LogToFile("[MonitorPlayerLogs] Starting LogMonitor...");
+                monitor.Start();
+                LogToFile("[MonitorPlayerLogs] LogMonitor started successfully");
+                
+                try
                 {
-                    Thread.Sleep(1000);
+                    while (true)
+                    {
+                        Thread.Sleep(1000);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    LogToFile("[MonitorPlayerLogs] Monitor cancelled");
+                    Console.WriteLine("\nLog monitor stopped.");
                 }
             }
-            catch (OperationCanceledException)
+            catch (Exception ex)
             {
-                Console.WriteLine("\nLog monitor stopped.");
+                LogToFile($"[MonitorPlayerLogs] CRITICAL ERROR: {ex.GetType().Name}: {ex.Message}");
+                LogToFile($"[MonitorPlayerLogs] Stack: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    LogToFile($"[MonitorPlayerLogs] InnerException: {ex.InnerException.Message}");
+                }
+                throw;
             }
         }
     }
 
     static void OnGameDetected(LogBlockEvent evt)
     {
-        var timestamp = evt.Timestamp.ToString("HH:mm:ss");
-        Console.WriteLine($"\n>>> GAME DETECTED: {evt.PlaceId}");
-        if (evt.IsBlocked)
+        try
         {
-            Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"[{timestamp}] ❌ BLOCKED: Game {evt.PlaceId}");
-            Console.ResetColor();
+            var timestamp = evt.Timestamp.ToString("HH:mm:ss");
+            Console.WriteLine($"\n>>> GAME DETECTED: {evt.PlaceId}");
+            LogToFile($"[OnGameDetected] Game {evt.PlaceId} detected, IsBlocked={evt.IsBlocked}");
             
-            // Show alert window on the UI thread
-            ShowAlertWindowThreadSafe();
+            if (evt.IsBlocked)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[{timestamp}] ❌ BLOCKED: Game {evt.PlaceId}");
+                Console.ResetColor();
+                
+                LogToFile($"[OnGameDetected] Game is blocked, showing alert...");
+                
+                // Show alert window on the UI thread
+                ShowAlertWindowThreadSafe();
+                
+                LogToFile($"[OnGameDetected] Alert dispatch complete, monitor continues");
+            }
+            else
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"[{timestamp}] ✅ ALLOWED: Game {evt.PlaceId}");
+                Console.ResetColor();
+                LogToFile($"[OnGameDetected] Game is allowed");
+            }
+            Console.Out.Flush();
         }
-        else
+        catch (Exception ex)
         {
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"[{timestamp}] ✅ ALLOWED: Game {evt.PlaceId}");
-            Console.ResetColor();
+            LogToFile($"[OnGameDetected] ERROR: {ex.GetType().Name}: {ex.Message}");
+            LogToFile($"[OnGameDetected] Stack: {ex.StackTrace}");
         }
-        Console.Out.Flush();
     }
 
     /// <summary>
@@ -477,6 +531,19 @@ class Program
             {
                 try
                 {
+                    LogToFile("[AlertWindow] Thread starting...");
+                    
+                    // Set up exception handler for this thread
+                    AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
+                    {
+                        LogToFile($"[AlertWindow-Thread] UNHANDLED: {e.ExceptionObject.GetType().Name}");
+                        if (e.ExceptionObject is Exception ex)
+                        {
+                            LogToFile($"[AlertWindow-Thread] {ex.Message}");
+                            LogToFile($"[AlertWindow-Thread] {ex.StackTrace}");
+                        }
+                    };
+                    
                     LogToFile("[AlertWindow] Creating AlertWindow instance...");
                     var alert = new AlertWindow();
                     
@@ -490,7 +557,11 @@ class Program
                     // Show dialog (blocking on this thread, but monitor continues on its thread)
                     var result = alert.ShowDialog();
                     
-                    LogToFile($"[AlertWindow] Alert displayed and closed, result: {result}");
+                    LogToFile($"[AlertWindow] Dialog closed with result: {result}");
+                }
+                catch (ThreadAbortException ex)
+                {
+                    LogToFile($"[AlertWindow] Thread abort (expected): {ex.Message}");
                 }
                 catch (Exception ex)
                 {
@@ -505,6 +576,7 @@ class Program
                     // Try to show a basic message box as fallback
                     try
                     {
+                        LogToFile("[AlertWindow] Attempting fallback MessageBox...");
                         System.Windows.MessageBox.Show(
                             "Game blocked by RobloxGuard.",
                             "🧠❌ BRAINDEAD CONTENT DETECTED",
@@ -516,13 +588,23 @@ class Program
                     catch (Exception mbEx)
                     {
                         LogToFile($"[AlertWindow] Fallback MessageBox also failed: {mbEx.Message}");
+                        LogToFile($"[AlertWindow] {mbEx.StackTrace}");
                     }
+                }
+                finally
+                {
+                    LogToFile("[AlertWindow] Thread cleanup complete");
                 }
             })
             {
                 IsBackground = false
             };
+            
+            // Set to STA for WPF compatibility
             thread.SetApartmentState(ApartmentState.STA);
+            thread.Name = "AlertWindowThread";
+            
+            LogToFile($"[OnGameDetected] Starting alert thread...");
             thread.Start();
             
             LogToFile($"[OnGameDetected] Alert thread started (ID: {thread.ManagedThreadId})");

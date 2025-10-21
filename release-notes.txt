@@ -1,0 +1,28 @@
+## v1.2.0 - Comprehensive Debug Logging
+
+### What's New
+- **Detailed logging for troubleshooting**: All game detection, blocking, and process termination events are now logged to `%LOCALAPPDATA%\RobloxGuard\launcher.log`
+- **Monitor crash diagnostics**: Complete stack traces and error information are captured, making it easy to debug why the monitor might stop unexpectedly
+- **Robust AlertWindow handling**: If the alert window fails to display, a fallback MessageBox appears with diagnostic information
+- **Enhanced file logging**: All WinExe operations are logged to file since console output is not visible in Windows GUI apps
+
+### Why This Matters
+Previously, when the monitor stopped after detecting a blocked game, there was no way to know what went wrong. Now you can check the debug log to see:
+- Whether the game was detected (`DETECTED GAME JOIN`)
+- Whether it was marked as blocked (`IS BLOCKED`)
+- Whether the process was terminated successfully
+- Any errors that occurred (including full stack traces)
+
+### Testing Instructions
+1. Download `RobloxGuard.exe` from this release
+2. Run it to install (first run auto-starts the monitor)
+3. Try to join a blocked game
+4. Check `%LOCALAPPDATA%\RobloxGuard\launcher.log` for detailed diagnostics
+5. Report any issues with the log contents
+
+### Files
+- `RobloxGuard.exe` (146 MB) - The application
+- `RobloxGuard.exe.sha256` - SHA256 checksum for verification
+
+### SHA256 Checksum
+`729611CD21553343D180E688E70E3C401447AFC27A9371331F13D81F01A3CB79`
