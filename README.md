@@ -55,3 +55,38 @@ Example config:
 - 📝 Pre-configured with sensible defaults
 - 💻 Single-file EXE (154 MB, no dependencies)
 - 🔒 Per-user install (no admin needed)
+
+## Troubleshooting
+
+### Monitor stops after game is blocked
+
+If the monitor shuts down silently after detecting a blocked game:
+
+1. **Check the debug log**:
+   ```
+   %LOCALAPPDATA%\RobloxGuard\launcher.log
+   ```
+   This file contains detailed diagnostic information about what happened.
+
+2. **Look for specific errors**:
+   - `[LogMonitor] DETECTED GAME JOIN: placeId=...` — Game was detected ✓
+   - `[LogMonitor] Game X IS BLOCKED` — Game was marked as blocked ✓
+   - `[LogMonitor.TerminateRobloxProcess]` — Process termination logs
+   - `[AlertWindow]` — Alert window display logs
+   - `CRITICAL ERROR` — If you see this, include it in a bug report
+
+3. **Common issues**:
+   - **Alert window fails to appear**: Check `[AlertWindow]` entries in launcher.log
+   - **Monitor crashes after game detected**: Look for stack traces after `EXCEPTION:` in logs
+   - **Game wasn't terminated**: Check `[LogMonitor.TerminateRobloxProcess]` logs to see if process was found
+
+### Getting help
+
+If the monitor stops unexpectedly:
+1. Copy the content of `%LOCALAPPDATA%\RobloxGuard\launcher.log`
+2. Open a GitHub issue with:
+   - The log content
+   - The blocked game's `placeId`
+   - What you saw (did the alert appear? did the game close?)
+
+`````

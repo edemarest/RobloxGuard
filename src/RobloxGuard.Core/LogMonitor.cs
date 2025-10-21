@@ -11,6 +11,12 @@ namespace RobloxGuard.Core;
 /// </summary>
 public class LogMonitor : IDisposable
 {
+    private static readonly string _logPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "RobloxGuard",
+        "launcher.log"
+    );
+
     private readonly string _logDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Roblox",
@@ -48,6 +54,19 @@ public class LogMonitor : IDisposable
     }
 
     /// <summary>
+    /// Logs to file for debugging in WinExe mode where console is not available.
+    /// </summary>
+    private static void LogToFile(string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_logPath)!);
+            File.AppendAllText(_logPath, $"[{DateTime.Now:HH:mm:ss.fff}] {message}\n");
+        }
+        catch { }
+    }
+
+    /// <summary>
     /// Starts monitoring Roblox player logs for game joins.
     /// Only one instance can run at a time (enforced via mutex).
     /// </summary>
@@ -60,6 +79,7 @@ public class LogMonitor : IDisposable
         _singletonMutex ??= new Mutex(false, "Global\\RobloxGuardLogMonitor");
         if (!_singletonMutex.WaitOne(0))
         {
+            LogToFile("[LogMonitor.Start] Another instance is already running. Exiting.");
             System.Console.WriteLine("[LogMonitor] Another instance is already running. Exiting.");
             return;
         }
@@ -68,12 +88,15 @@ public class LogMonitor : IDisposable
         _isRunning = true;
         _cancellationTokenSource = new CancellationTokenSource();
         
+        LogToFile("[LogMonitor.Start] Initializing log monitor");
+        
         // Start FileSystemWatcher for immediate new file detection
         SetupFileWatcher();
         
         // Start background monitoring
         _monitoringTask = MonitorLogsAsync(_cancellationTokenSource.Token);
         
+        LogToFile("[LogMonitor.Start] Monitor task started");
         System.Console.WriteLine("[LogMonitor] Started monitoring (FileWatcher + Polling)");
     }
 
@@ -282,6 +305,12 @@ public class LogMonitor : IDisposable
             }
             catch (Exception ex)
             {
+                LogToFile($"[LogMonitor.MonitorLogsAsync] EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+                LogToFile($"[LogMonitor.MonitorLogsAsync] StackTrace: {ex.StackTrace}");
+                if (ex.InnerException != null)
+                {
+                    LogToFile($"[LogMonitor.MonitorLogsAsync] InnerException: {ex.InnerException.Message}");
+                }
                 Debug.WriteLine($"[LogMonitor] Error in monitoring loop: {ex.Message}");
                 System.Console.WriteLine($"[LogMonitor] Error: {ex.Message}");
                 await Task.Delay(1000, cancellationToken);
@@ -331,6 +360,7 @@ public class LogMonitor : IDisposable
                     var match = JoiningGamePattern.Match(line);
                     if (match.Success && long.TryParse(match.Groups[1].Value, out var placeId))
                     {
+                        LogToFile($"[LogMonitor] DETECTED GAME JOIN: placeId={placeId}");
                         System.Console.WriteLine($"[LogMonitor] >>> DETECTED GAME JOIN: placeId={placeId}");
                         Debug.WriteLine($"[LogMonitor] Detected game join: placeId={placeId}");
 
@@ -338,6 +368,7 @@ public class LogMonitor : IDisposable
                         var config = ConfigManager.Load();
                         if (ConfigManager.IsBlocked(placeId, config))
                         {
+                            LogToFile($"[LogMonitor] Game {placeId} IS BLOCKED - calling callback");
                             Debug.WriteLine($"[LogMonitor] Game {placeId} is BLOCKED");
 
                             _onGameDetected(new LogBlockEvent
@@ -348,11 +379,13 @@ public class LogMonitor : IDisposable
                                 LogLine = line
                             });
 
+                            LogToFile($"[LogMonitor] Callback completed, terminating Roblox process");
                             // Try to terminate RobloxPlayerBeta
                             TerminateRobloxProcess();
                         }
                         else
                         {
+                            LogToFile($"[LogMonitor] Game {placeId} is allowed");
                             Debug.WriteLine($"[LogMonitor] Game {placeId} is allowed");
 
                             _onGameDetected(new LogBlockEvent
@@ -398,21 +431,27 @@ public class LogMonitor : IDisposable
     {
         try
         {
+            LogToFile("[LogMonitor.TerminateRobloxProcess] Looking for RobloxPlayerBeta processes...");
             var processes = Process.GetProcessesByName("RobloxPlayerBeta");
+            LogToFile($"[LogMonitor.TerminateRobloxProcess] Found {processes.Length} process(es)");
+            
             foreach (var proc in processes)
             {
                 try
                 {
+                    LogToFile($"[LogMonitor.TerminateRobloxProcess] Killing process PID={proc.Id}");
                     System.Console.WriteLine($"[LogMonitor] TERMINATING RobloxPlayerBeta (PID: {proc.Id})");
                     Debug.WriteLine($"[LogMonitor] FORCE TERMINATING RobloxPlayerBeta (PID: {proc.Id})");
                     // Aggressive: Kill immediately without graceful close
                     // This ensures blocked games cannot launch
                     proc.Kill(true); // Kill with child processes
+                    LogToFile($"[LogMonitor.TerminateRobloxProcess] Process {proc.Id} successfully terminated");
                     System.Console.WriteLine($"[LogMonitor] Successfully terminated process {proc.Id}");
                     Debug.WriteLine($"[LogMonitor] Process {proc.Id} killed");
                 }
                 catch (Exception ex)
                 {
+                    LogToFile($"[LogMonitor.TerminateRobloxProcess] Error killing process {proc.Id}: {ex.Message}");
                     System.Console.WriteLine($"[LogMonitor] Error killing process: {ex.Message}");
                     Debug.WriteLine($"[LogMonitor] Error killing process: {ex.Message}");
                 }
@@ -420,6 +459,8 @@ public class LogMonitor : IDisposable
         }
         catch (Exception ex)
         {
+            LogToFile($"[LogMonitor.TerminateRobloxProcess] CRITICAL ERROR: {ex.GetType().Name}: {ex.Message}");
+            LogToFile($"[LogMonitor.TerminateRobloxProcess] StackTrace: {ex.StackTrace}");
             System.Console.WriteLine($"[LogMonitor] Error in TerminateRobloxProcess: {ex.Message}");
             Debug.WriteLine($"[LogMonitor] Error in TerminateRobloxProcess: {ex.Message}");
         }

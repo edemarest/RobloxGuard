@@ -466,6 +466,7 @@ class Program
 
     /// <summary>
     /// Thread-safe method to show alert window from background monitor thread.
+    /// Robust version that catches all exceptions and prevents the monitor from crashing.
     /// </summary>
     static void ShowAlertWindowThreadSafe()
     {
@@ -476,22 +477,46 @@ class Program
             {
                 try
                 {
+                    LogToFile("[AlertWindow] Creating AlertWindow instance...");
                     var alert = new AlertWindow();
                     
+                    LogToFile("[AlertWindow] Setting window properties...");
                     // Ensure window is visible and on top
                     alert.Topmost = true;
                     alert.ShowInTaskbar = true;
                     alert.WindowState = System.Windows.WindowState.Normal;
                     
+                    LogToFile("[AlertWindow] Showing dialog...");
                     // Show dialog (blocking on this thread, but monitor continues on its thread)
                     var result = alert.ShowDialog();
                     
-                    Console.WriteLine($"[AlertWindow] Alert displayed and closed, result: {result}");
+                    LogToFile($"[AlertWindow] Alert displayed and closed, result: {result}");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[AlertWindow] Error showing alert: {ex.Message}");
-                    Console.WriteLine($"[AlertWindow] Stack trace: {ex.StackTrace}");
+                    LogToFile($"[AlertWindow] CRITICAL ERROR: {ex.GetType().Name}: {ex.Message}");
+                    LogToFile($"[AlertWindow] Stack trace: {ex.StackTrace}");
+                    if (ex.InnerException != null)
+                    {
+                        LogToFile($"[AlertWindow] Inner exception: {ex.InnerException.Message}");
+                        LogToFile($"[AlertWindow] Inner stack: {ex.InnerException.StackTrace}");
+                    }
+                    
+                    // Try to show a basic message box as fallback
+                    try
+                    {
+                        System.Windows.MessageBox.Show(
+                            "Game blocked by RobloxGuard.",
+                            "🧠❌ BRAINDEAD CONTENT DETECTED",
+                            System.Windows.MessageBoxButton.OK,
+                            System.Windows.MessageBoxImage.Stop
+                        );
+                        LogToFile("[AlertWindow] Fallback MessageBox shown successfully");
+                    }
+                    catch (Exception mbEx)
+                    {
+                        LogToFile($"[AlertWindow] Fallback MessageBox also failed: {mbEx.Message}");
+                    }
                 }
             })
             {
@@ -500,12 +525,12 @@ class Program
             thread.SetApartmentState(ApartmentState.STA);
             thread.Start();
             
-            Console.WriteLine($"[OnGameDetected] Alert thread started (ID: {thread.ManagedThreadId})");
+            LogToFile($"[OnGameDetected] Alert thread started (ID: {thread.ManagedThreadId})");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[OnGameDetected] Error showing alert: {ex.Message}");
-            Console.WriteLine($"[OnGameDetected] Stack trace: {ex.StackTrace}");
+            LogToFile($"[OnGameDetected] CRITICAL ERROR starting alert thread: {ex.Message}");
+            LogToFile($"[OnGameDetected] Stack trace: {ex.StackTrace}");
         }
     }
 }
