@@ -547,11 +547,13 @@ class Program
                     LogToFile("[AlertForm] Creating AlertForm instance (Windows Forms)...");
                     var alert = new AlertForm();
                     
-                    LogToFile("[AlertForm] Showing dialog...");
-                    // ShowDialog will block this thread, but monitor continues on its thread
-                    var result = alert.ShowDialog();
+                    LogToFile("[AlertForm] Starting application message loop...");
+                    // Run the form with its own message loop
+                    // This is critical - ShowDialog() alone won't process messages properly on a background thread
+                    System.Windows.Forms.Application.EnableVisualStyles();
+                    System.Windows.Forms.Application.Run(alert);
                     
-                    LogToFile($"[AlertForm] Dialog closed with result: {result}");
+                    LogToFile($"[AlertForm] Form closed, message loop ended");
                 }
                 catch (ThreadAbortException ex)
                 {
