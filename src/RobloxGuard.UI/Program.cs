@@ -40,15 +40,6 @@ class Program
             LogToFile($"[GLOBAL] IsTerminating: {e.IsTerminating}");
         };
 
-        // Register on dispatch unhandled exception for UI thread
-        System.Windows.Threading.Dispatcher.CurrentDispatcher.UnhandledException += (sender, e) =>
-        {
-            LogToFile($"[DISPATCHER] UNHANDLED EXCEPTION: {e.Exception.GetType().Name}");
-            LogToFile($"[DISPATCHER] Message: {e.Exception.Message}");
-            LogToFile($"[DISPATCHER] StackTrace: {e.Exception.StackTrace}");
-            e.Handled = true; // Prevent app crash
-        };
-
         // Auto-start mode: when EXE clicked with no arguments
         if (args.Length == 0)
         {
@@ -493,11 +484,20 @@ class Program
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"[{timestamp}] ❌ BLOCKED: Game {evt.PlaceId}");
+                Console.WriteLine("╔════════════════════════════════════════╗");
+                Console.WriteLine("║  🧠❌ BRAINDEAD CONTENT DETECTED 🧠❌  ║");
+                Console.WriteLine("║                                        ║");
+                Console.WriteLine("║     This game is blocked by parent.    ║");
+                Console.WriteLine("║     The Roblox process was closed.     ║");
+                Console.WriteLine("║                                        ║");
+                Console.WriteLine("║        Blocking will continue for      ║");
+                Console.WriteLine("║        all games on the blocklist.     ║");
+                Console.WriteLine("╚════════════════════════════════════════╝");
                 Console.ResetColor();
                 
-                LogToFile($"[OnGameDetected] Game is blocked, showing alert...");
+                LogToFile($"[OnGameDetected] Game is blocked, showing alert window...");
                 
-                // Show alert window on the UI thread
+                // Show alert window (Windows Forms - more reliable)
                 ShowAlertWindowThreadSafe();
                 
                 LogToFile($"[OnGameDetected] Alert dispatch complete, monitor continues");
@@ -519,8 +519,8 @@ class Program
     }
 
     /// <summary>
-    /// Thread-safe method to show alert window from background monitor thread.
-    /// Robust version that catches all exceptions and prevents the monitor from crashing.
+    /// Show alert window using Windows Forms (more reliable than WPF, fewer dependencies).
+    /// Runs on a separate thread so the monitor continues in the background.
     /// </summary>
     static void ShowAlertWindowThreadSafe()
     {
@@ -531,80 +531,72 @@ class Program
             {
                 try
                 {
-                    LogToFile("[AlertWindow] Thread starting...");
+                    LogToFile("[AlertForm] Thread starting...");
                     
                     // Set up exception handler for this thread
                     AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
                     {
-                        LogToFile($"[AlertWindow-Thread] UNHANDLED: {e.ExceptionObject.GetType().Name}");
+                        LogToFile($"[AlertForm-Thread] UNHANDLED: {e.ExceptionObject.GetType().Name}");
                         if (e.ExceptionObject is Exception ex)
                         {
-                            LogToFile($"[AlertWindow-Thread] {ex.Message}");
-                            LogToFile($"[AlertWindow-Thread] {ex.StackTrace}");
+                            LogToFile($"[AlertForm-Thread] {ex.Message}");
+                            LogToFile($"[AlertForm-Thread] {ex.StackTrace}");
                         }
                     };
                     
-                    LogToFile("[AlertWindow] Creating AlertWindow instance...");
-                    var alert = new AlertWindow();
+                    LogToFile("[AlertForm] Creating AlertForm instance (Windows Forms)...");
+                    var alert = new AlertForm();
                     
-                    LogToFile("[AlertWindow] Setting window properties...");
-                    // Ensure window is visible and on top
-                    alert.Topmost = true;
-                    alert.ShowInTaskbar = true;
-                    alert.WindowState = System.Windows.WindowState.Normal;
-                    
-                    LogToFile("[AlertWindow] Showing dialog...");
-                    // Show dialog (blocking on this thread, but monitor continues on its thread)
+                    LogToFile("[AlertForm] Showing dialog...");
+                    // ShowDialog will block this thread, but monitor continues on its thread
                     var result = alert.ShowDialog();
                     
-                    LogToFile($"[AlertWindow] Dialog closed with result: {result}");
+                    LogToFile($"[AlertForm] Dialog closed with result: {result}");
                 }
                 catch (ThreadAbortException ex)
                 {
-                    LogToFile($"[AlertWindow] Thread abort (expected): {ex.Message}");
+                    LogToFile($"[AlertForm] Thread abort (expected): {ex.Message}");
                 }
                 catch (Exception ex)
                 {
-                    LogToFile($"[AlertWindow] CRITICAL ERROR: {ex.GetType().Name}: {ex.Message}");
-                    LogToFile($"[AlertWindow] Stack trace: {ex.StackTrace}");
+                    LogToFile($"[AlertForm] CRITICAL ERROR: {ex.GetType().Name}: {ex.Message}");
+                    LogToFile($"[AlertForm] Stack trace: {ex.StackTrace}");
                     if (ex.InnerException != null)
                     {
-                        LogToFile($"[AlertWindow] Inner exception: {ex.InnerException.Message}");
-                        LogToFile($"[AlertWindow] Inner stack: {ex.InnerException.StackTrace}");
+                        LogToFile($"[AlertForm] Inner exception: {ex.InnerException.Message}");
+                        LogToFile($"[AlertForm] Inner stack: {ex.InnerException.StackTrace}");
                     }
                     
-                    // Try to show a basic message box as fallback
+                    // Try to show a fallback message box as last resort
                     try
                     {
-                        LogToFile("[AlertWindow] Attempting fallback MessageBox...");
-                        System.Windows.MessageBox.Show(
-                            "Game blocked by RobloxGuard.",
+                        LogToFile("[AlertForm] Attempting fallback MessageBox...");
+                        System.Windows.Forms.MessageBox.Show(
+                            "Game blocked by RobloxGuard.\n\nThe Roblox process was terminated.",
                             "🧠❌ BRAINDEAD CONTENT DETECTED",
-                            System.Windows.MessageBoxButton.OK,
-                            System.Windows.MessageBoxImage.Stop
+                            System.Windows.Forms.MessageBoxButtons.OK,
+                            System.Windows.Forms.MessageBoxIcon.Stop
                         );
-                        LogToFile("[AlertWindow] Fallback MessageBox shown successfully");
+                        LogToFile("[AlertForm] Fallback MessageBox shown successfully");
                     }
                     catch (Exception mbEx)
                     {
-                        LogToFile($"[AlertWindow] Fallback MessageBox also failed: {mbEx.Message}");
-                        LogToFile($"[AlertWindow] {mbEx.StackTrace}");
+                        LogToFile($"[AlertForm] Fallback MessageBox also failed: {mbEx.Message}");
+                        LogToFile($"[AlertForm] {mbEx.StackTrace}");
                     }
                 }
                 finally
                 {
-                    LogToFile("[AlertWindow] Thread cleanup complete");
+                    LogToFile("[AlertForm] Thread cleanup complete");
                 }
             })
             {
                 IsBackground = false
             };
             
-            // Set to STA for WPF compatibility
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Name = "AlertWindowThread";
+            thread.Name = "AlertFormThread";
             
-            LogToFile($"[OnGameDetected] Starting alert thread...");
+            LogToFile($"[OnGameDetected] Starting alert form thread...");
             thread.Start();
             
             LogToFile($"[OnGameDetected] Alert thread started (ID: {thread.ManagedThreadId})");

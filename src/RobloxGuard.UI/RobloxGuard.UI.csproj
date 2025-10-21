@@ -1,11 +1,12 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
   <ItemGroup>
     <ProjectReference Include="..\RobloxGuard.Core\RobloxGuard.Core.csproj" />
   </ItemGroup>
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>false</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>RobloxGuard</AssemblyName>
