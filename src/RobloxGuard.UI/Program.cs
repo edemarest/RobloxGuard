@@ -544,13 +544,23 @@ class Program
                         }
                     };
                     
+                    LogToFile("[AlertForm] Enabling visual styles (may only work once per AppDomain)...");
+                    try
+                    {
+                        System.Windows.Forms.Application.EnableVisualStyles();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogToFile($"[AlertForm] EnableVisualStyles warning (harmless): {ex.Message}");
+                    }
+                    
                     LogToFile("[AlertForm] Creating AlertForm instance (Windows Forms)...");
                     var alert = new AlertForm();
+                    alert.Visible = true;
                     
                     LogToFile("[AlertForm] Starting application message loop...");
                     // Run the form with its own message loop
-                    // This is critical - ShowDialog() alone won't process messages properly on a background thread
-                    System.Windows.Forms.Application.EnableVisualStyles();
+                    // Set form to visible BEFORE calling Application.Run()
                     System.Windows.Forms.Application.Run(alert);
                     
                     LogToFile($"[AlertForm] Form closed, message loop ended");

@@ -24,7 +24,7 @@ public partial class AlertForm : Form
     private void SetupUI()
     {
         // Window properties
-        this.Text = "🛑 RobloxGuard Alert";
+        this.Text = "RobloxGuard Alert";
         this.StartPosition = FormStartPosition.CenterScreen;
         this.TopMost = true;
         this.ShowInTaskbar = true;
@@ -32,7 +32,7 @@ public partial class AlertForm : Form
         this.MaximizeBox = false;
         this.MinimizeBox = false;
         this.ControlBox = false;
-        this.Size = new Size(700, 500);
+        this.Size = new Size(900, 600);
         this.BackColor = Color.FromArgb(26, 26, 26); // Dark background
         this.ForeColor = Color.White;
         this.Icon = null;
@@ -51,46 +51,44 @@ public partial class AlertForm : Form
         {
             Dock = DockStyle.Fill,
             BackColor = Color.Red,
-            Padding = new Padding(2)
+            Padding = new Padding(3)
         };
         
         var mainContent = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.FromArgb(26, 26, 26),
-            Padding = new Padding(20)
+            Padding = new Padding(30)
         };
 
         borderInner.Controls.Add(mainContent);
         borderPanel.Controls.Add(borderInner);
         this.Controls.Add(borderPanel);
 
-        // Create main content container
+        // Create main content container with 3 rows
         var container = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 5,
+            RowCount = 3,
             ColumnCount = 1,
             AutoScroll = false,
-            Padding = new Padding(10),
+            Padding = new Padding(0),
             Margin = new Padding(0),
             BackColor = Color.FromArgb(26, 26, 26)
         };
         
-        // Set row styles
-        container.RowStyles.Add(new RowStyle(SizeType.Percent, 25)); // Emojis
-        container.RowStyles.Add(new RowStyle(SizeType.Percent, 35)); // Main text
-        container.RowStyles.Add(new RowStyle(SizeType.Percent, 15)); // Description
-        container.RowStyles.Add(new RowStyle(SizeType.Percent, 15)); // Extra info
-        container.RowStyles.Add(new RowStyle(SizeType.Percent, 10)); // Countdown
+        // Set row styles - more balanced
+        container.RowStyles.Add(new RowStyle(SizeType.Percent, 30)); // Icon/Text combo
+        container.RowStyles.Add(new RowStyle(SizeType.Percent, 50)); // Main text
+        container.RowStyles.Add(new RowStyle(SizeType.Percent, 20)); // Countdown
 
         mainContent.Controls.Add(container);
 
-        // Emoji row
-        var emojiLabel = new Label
+        // Row 0: Simple X icon - blocked content symbol
+        var iconLabel = new Label
         {
-            Text = "🧠  ❌",
-            Font = new Font("Arial", 80, FontStyle.Bold),
+            Text = "✕",
+            Font = new Font("Arial", 120, FontStyle.Bold),
             ForeColor = Color.Red,
             TextAlign = ContentAlignment.MiddleCenter,
             AutoSize = false,
@@ -98,64 +96,37 @@ public partial class AlertForm : Form
             Margin = new Padding(0),
             BackColor = Color.FromArgb(26, 26, 26)
         };
-        container.Controls.Add(emojiLabel, 0, 0);
+        container.Controls.Add(iconLabel, 0, 0);
 
-        // Main message (pulsing)
+        // Row 1: Main message (pulsing) - split into two lines to fit
         _mainMessageLabel = new Label
         {
-            Text = "BRAINDEAD\nCONTENT\nDETECTED",
-            Font = new Font("Arial", 56, FontStyle.Bold),
+            Text = "BRAINDEAD\nCONTENT DETECTED",
+            Font = new Font("Arial", 54, FontStyle.Bold),
             ForeColor = Color.Red,
             TextAlign = ContentAlignment.MiddleCenter,
             AutoSize = false,
             Dock = DockStyle.Fill,
             Margin = new Padding(0),
-            BackColor = Color.FromArgb(26, 26, 26)
+            BackColor = Color.FromArgb(26, 26, 26),
+            AutoEllipsis = false
         };
         container.Controls.Add(_mainMessageLabel, 0, 1);
 
-        // Description
-        var descLabel = new Label
-        {
-            Text = "This game has been blocked by your parent.",
-            Font = new Font("Arial", 14),
-            ForeColor = Color.FromArgb(200, 200, 200),
-            TextAlign = ContentAlignment.MiddleCenter,
-            AutoSize = false,
-            Dock = DockStyle.Fill,
-            Margin = new Padding(0),
-            BackColor = Color.FromArgb(26, 26, 26)
-        };
-        container.Controls.Add(descLabel, 0, 2);
-
-        // Extra info
-        var infoLabel = new Label
-        {
-            Text = "The Roblox process was closed.",
-            Font = new Font("Arial", 12),
-            ForeColor = Color.FromArgb(150, 150, 150),
-            TextAlign = ContentAlignment.TopCenter,
-            AutoSize = false,
-            Dock = DockStyle.Fill,
-            Margin = new Padding(0),
-            BackColor = Color.FromArgb(26, 26, 26)
-        };
-        container.Controls.Add(infoLabel, 0, 3);
-
-        // Countdown label
+        // Row 2: Countdown label - bright red
         var countdownLabel = new Label
         {
             Name = "CountdownLabel",
             Text = "Closing in 20 seconds...",
-            Font = new Font("Arial", 11),
-            ForeColor = Color.FromArgb(153, 153, 153),
+            Font = new Font("Arial", 20, FontStyle.Bold),
+            ForeColor = Color.Red,
             TextAlign = ContentAlignment.MiddleCenter,
             AutoSize = false,
             Dock = DockStyle.Fill,
             Margin = new Padding(0),
             BackColor = Color.FromArgb(26, 26, 26)
         };
-        container.Controls.Add(countdownLabel, 0, 4);
+        container.Controls.Add(countdownLabel, 0, 2);
 
         // Start flashing timer for main message
         _flashTimer = new System.Windows.Forms.Timer();
