@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Windows.Forms;
+using System.Media;
 
 namespace RobloxGuard.UI;
 
@@ -84,6 +85,16 @@ public partial class AlertForm : Form
 
         mainContent.Controls.Add(container);
 
+        // Play alert sound
+        try
+        {
+            SystemSounds.Beep.Play();
+        }
+        catch
+        {
+            // Silently fail if sound system unavailable
+        }
+
         // Row 0: Simple X icon - blocked content symbol
         var iconLabel = new Label
         {
@@ -148,6 +159,16 @@ public partial class AlertForm : Form
         {
             _secondsRemaining--;
             countdownLabel.Text = $"Closing in {_secondsRemaining} second{(_secondsRemaining != 1 ? "s" : "")}...";
+            
+            // Beep every second as countdown goes
+            try
+            {
+                SystemSounds.Beep.Play();
+            }
+            catch
+            {
+                // Silently fail if sound system unavailable
+            }
             
             if (_secondsRemaining <= 0)
             {
