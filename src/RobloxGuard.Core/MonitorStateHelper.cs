@@ -1,10 +1,12 @@
+using System.Diagnostics;
 using System.Threading;
 
 namespace RobloxGuard.Core;
 
 /// <summary>
 /// Helpers to detect if LogMonitor is already running in the background.
-/// Uses mutex-based detection to work across processes.
+/// Uses mutex-based detection + process validation to work across processes.
+/// Also cleans up stale mutexes from crashed processes.
 /// </summary>
 public static class MonitorStateHelper
 {
@@ -15,18 +17,32 @@ public static class MonitorStateHelper
 
     /// <summary>
     /// Check if LogMonitor is currently running in the background.
+    /// Validates that:
+    /// 1. Mutex exists (indicating monitor was started)
+    /// 2. At least one RobloxGuard process is actually running (not just stale mutex)
     /// </summary>
-    /// <returns>True if monitor is running, false otherwise.</returns>
+    /// <returns>True if monitor is actively running, false otherwise.</returns>
     public static bool IsMonitorRunning()
     {
         try
         {
-            // Try to open the existing mutex without acquiring it
-            // If the mutex exists, it means LogMonitor is currently running
+            // Step 1: Check if mutex exists
             using var mutex = Mutex.OpenExisting(MutexName);
             
-            // Mutex exists - monitor is active
-            return true;
+            // Step 2: Mutex exists, but verify an actual process is running
+            // Check for any RobloxGuard processes (could be launcher or monitor)
+            var processes = Process.GetProcessesByName("RobloxGuard");
+            
+            if (processes.Length > 0)
+            {
+                // At least one RobloxGuard process is running - monitor is active
+                return true;
+            }
+            
+            // Mutex exists but no processes running - stale mutex
+            // This can happen if process crashed or was killed
+            // Return false so a new monitor can start
+            return false;
         }
         catch (WaitHandleCannotBeOpenedException)
         {
@@ -35,7 +51,8 @@ public static class MonitorStateHelper
         }
         catch (UnauthorizedAccessException)
         {
-            // Mutex exists but no access - treat as running
+            // Mutex exists but no access - treat as running to be safe
+            // (another user's session or elevated process)
             return true;
         }
         catch (Exception ex)
