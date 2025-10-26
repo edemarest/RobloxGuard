@@ -55,11 +55,32 @@ public static class MonitorStateHelper
                 LogToFile("Mutex does not exist - monitor not running");
                 return false;
             }
-            catch (UnauthorizedAccessException)
+            catch (UnauthorizedAccessException ex)
             {
-                // Mutex exists but no access (different user) - be conservative
-                LogToFile("Mutex exists but no access - treating as running");
-                return true;
+                // Mutex exists but no access (permission issue or different user)
+                // In this case, check if we can find RobloxGuard processes
+                // If we find any, trust them. If not, allow new monitor.
+                LogToFile($"Mutex access denied ({ex.Message}) - checking process list as fallback");
+                
+                try
+                {
+                    var processes = Process.GetProcessesByName("RobloxGuard");
+                    if (processes.Length > 0)
+                    {
+                        LogToFile($"Found {processes.Length} RobloxGuard process(es) despite mutex access issue - treating as running");
+                        return true;
+                    }
+                    else
+                    {
+                        LogToFile("No RobloxGuard processes found despite mutex access issue - allowing new monitor");
+                        return false;
+                    }
+                }
+                catch (Exception procEx)
+                {
+                    LogToFile($"Could not check processes: {procEx.Message} - allowing new monitor to be safe");
+                    return false;
+                }
             }
 
             using (mutex)
