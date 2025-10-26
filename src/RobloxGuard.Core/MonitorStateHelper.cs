@@ -126,4 +126,46 @@ public static class MonitorStateHelper
             ? "✓ RobloxGuard monitoring is running in the background" 
             : "⚠ RobloxGuard monitoring is not running";
     }
+
+    /// <summary>
+    /// Force cleanup: Release mutex and abandon all references.
+    /// Used during uninstall to ensure clean state.
+    /// </summary>
+    public static void ForceCleanup()
+    {
+        try
+        {
+            LogToFile("ForceCleanup: Attempting to release mutex...");
+            
+            // Try to open and release the mutex
+            try
+            {
+                var mutex = Mutex.OpenExisting(MutexName);
+                try
+                {
+                    // Try to acquire and release to flush it
+                    if (mutex.WaitOne(100))
+                    {
+                        mutex.ReleaseMutex();
+                        LogToFile("ForceCleanup: Mutex released");
+                    }
+                }
+                catch { }
+                finally
+                {
+                    mutex?.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogToFile($"ForceCleanup: Mutex operation failed: {ex.GetType().Name}");
+            }
+
+            LogToFile("ForceCleanup: Complete");
+        }
+        catch (Exception ex)
+        {
+            LogToFile($"ForceCleanup: Error: {ex.Message}");
+        }
+    }
 }

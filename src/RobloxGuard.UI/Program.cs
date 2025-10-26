@@ -328,6 +328,10 @@ class Program
             LogToFile("=== UNINSTALL MODE ===");
             LogToFile("Starting uninstallation...");
             
+            // Step 0: Force cleanup of mutex
+            LogToFile("Cleaning up system resources...");
+            MonitorStateHelper.ForceCleanup();
+            System.Threading.Thread.Sleep(200);
             // Step 1: Kill any running RobloxGuard processes (multiple times to be sure)
             try
             {
@@ -431,12 +435,18 @@ class Program
             Console.WriteLine("  - All files removed");
             Console.WriteLine("  - Monitor process terminated\n");
             System.Threading.Thread.Sleep(1500);
+            
+            // Force exit to ensure launcher process terminates completely
+            // This allows AppData folder to be fully deleted (no file locks)
+            LogToFile("Exiting launcher process...");
+            Environment.Exit(0);
         }
         catch (Exception ex)
         {
             LogToFile($"✗ Uninstallation failed: {ex.Message}");
             LogToFile($"Stack: {ex.StackTrace}");
             Console.WriteLine($"\n✗ Uninstall error: {ex.Message}\n");
+            Environment.Exit(1);
         }
     }
 
