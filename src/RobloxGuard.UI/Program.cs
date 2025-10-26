@@ -87,7 +87,8 @@ class Program
     /// Handles auto-start mode when EXE is clicked with no arguments.
     /// Logic:
     /// 1. If not installed: Auto-install silently
-    /// 2. If monitor not running: Start it in background
+    /// 2. Clean up any stale mutex
+    /// 3. If monitor not running: Start it in background
     /// </summary>
     static void HandleAutoStartMode()
     {
@@ -97,8 +98,12 @@ class Program
             LogToFile($"ProcessPath: {Environment.ProcessPath}");
             LogToFile($"BaseDirectory: {AppContext.BaseDirectory}");
 
+            // Step 0: Clean up any stale mutex from previous failed instances
+            LogToFile("Step 0: Cleaning up stale resources...");
+            MonitorStateHelper.ForceCleanup();
+
             // Step 1: Auto-install if not already installed
-            LogToFile("Checking if installed...");
+            LogToFile("Step 1: Checking if installed...");
             if (!InstallerHelper.IsInstalled())
             {
                 LogToFile("First run detected. Installing RobloxGuard...");
@@ -112,7 +117,7 @@ class Program
             }
 
             // Step 2: Check if monitor is already running
-            LogToFile("Checking if monitor is running...");
+            LogToFile("Step 2: Checking if monitor is running...");
             bool isRunning = MonitorStateHelper.IsMonitorRunning();
             LogToFile($"IsMonitorRunning() = {isRunning}");
             Console.WriteLine($"[Program] IsMonitorRunning() = {isRunning}");
@@ -126,19 +131,27 @@ class Program
             }
 
             // Step 3: Start monitor in background
-            LogToFile("Starting monitor in background...");
+            LogToFile("Step 3: Starting monitor in background...");
             Console.WriteLine("[Program] Starting monitor in background");
             StartMonitorInBackground();
+            
+            // CRITICAL: Exit immediately after starting monitor
+            // This releases all resources and allows monitor to acquire the global mutex
+            LogToFile("Launcher exiting to allow monitor full control...");
+            System.Threading.Thread.Sleep(200);
+            Environment.Exit(0);
         }
         catch (Exception ex)
         {
             LogToFile($"ERROR: {ex.Message}");
             LogToFile($"Stack: {ex.StackTrace}");
+            Environment.Exit(1);
         }
     }
 
     /// <summary>
     /// Starts the LogMonitor process in the background with no visible window.
+    /// Uses UseShellExecute=false for better process tracking and error detection.
     /// </summary>
     static void StartMonitorInBackground()
     {
@@ -148,15 +161,16 @@ class Program
             LogToFile($"App path resolved to: {appExePath}");
 
             // Create process info for background monitor
+            // UseShellExecute=false allows better tracking and error redirection
             var psi = new ProcessStartInfo
             {
                 FileName = appExePath,
                 Arguments = "--monitor-logs",
-                UseShellExecute = true,
+                UseShellExecute = false,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden,
-                RedirectStandardOutput = false,
-                RedirectStandardError = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
             };
 
             LogToFile($"Starting process: {psi.FileName} {psi.Arguments}");
@@ -172,7 +186,47 @@ class Program
             }
 
             LogToFile($"✓ Monitor started: PID {process.Id}");
-            System.Threading.Thread.Sleep(2000);
+            
+            // Brief wait to capture any immediate startup errors
+            System.Threading.Thread.Sleep(500);
+            
+            // Check if process exited immediately (indicates startup error)
+            if (process.HasExited)
+            {
+                LogToFile($"⚠ Monitor process exited immediately (exit code: {process.ExitCode})");
+                
+                // Try to read error output
+                try
+                {
+                    if (process.StandardError.Peek() > -1)
+                    {
+                        string? stderr = process.StandardError.ReadToEnd();
+                        if (!string.IsNullOrEmpty(stderr))
+                        {
+                            LogToFile($"Monitor stderr: {stderr}");
+                        }
+                    }
+                }
+                catch { }
+                
+                try
+                {
+                    if (process.StandardOutput.Peek() > -1)
+                    {
+                        string? stdout = process.StandardOutput.ReadToEnd();
+                        if (!string.IsNullOrEmpty(stdout))
+                        {
+                            LogToFile($"Monitor stdout: {stdout}");
+                        }
+                    }
+                }
+                catch { }
+                
+                return;
+            }
+
+            LogToFile($"✓ Monitor process is running (will continue in background)");
+            System.Threading.Thread.Sleep(1000);
         }
         catch (Exception ex)
         {

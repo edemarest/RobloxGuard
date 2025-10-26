@@ -34,8 +34,8 @@ public static class MonitorStateHelper
 
     /// <summary>
     /// Check if LogMonitor is currently running in the background.
-    /// Primary method: Check for actual RobloxGuard processes.
-    /// Secondary method: Validate mutex is actively held (if process check is inconclusive).
+    /// PRIMARY: Look for OTHER RobloxGuard processes (excluding the current process).
+    /// SECONDARY: Validate mutex is actively held (if process check inconclusive).
     /// </summary>
     /// <returns>True if monitor is actively running, false otherwise.</returns>
     public static bool IsMonitorRunning()
@@ -43,22 +43,26 @@ public static class MonitorStateHelper
         try
         {
             LogToFile("Checking if monitor is running...");
+            int currentPID = Environment.ProcessId;
+            LogToFile($"Current process ID: {currentPID}");
             
-            // PRIMARY CHECK: Look for actual RobloxGuard processes
-            // This is the most reliable indicator - if no process exists, monitor is not running
+            // PRIMARY CHECK: Look for OTHER RobloxGuard processes (exclude ourselves)
+            // This is the most reliable indicator - if no OTHER process exists, monitor is not running
             try
             {
                 var processes = Process.GetProcessesByName("RobloxGuard");
-                LogToFile($"Process check: Found {processes.Length} RobloxGuard process(es)");
+                var otherProcesses = processes.Where(p => p.Id != currentPID).ToList();
                 
-                if (processes.Length > 0)
+                LogToFile($"Process check: Found {processes.Length} RobloxGuard process(es), {otherProcesses.Count} OTHER than current");
+                
+                if (otherProcesses.Count > 0)
                 {
-                    LogToFile("Monitor is running (process exists)");
+                    LogToFile($"✓ Monitor is running (found {otherProcesses.Count} other RobloxGuard process(es))");
                     return true;
                 }
                 else
                 {
-                    LogToFile("No RobloxGuard processes found - monitor not running");
+                    LogToFile("No OTHER RobloxGuard processes found - monitor not running");
                     return false;
                 }
             }
