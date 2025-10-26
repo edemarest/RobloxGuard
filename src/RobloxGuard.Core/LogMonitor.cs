@@ -75,40 +75,20 @@ public class LogMonitor : IDisposable
         if (_isRunning)
             return;
 
-        // Attempt to acquire singleton mutex
-        // Retry up to 10 times (2 seconds total) to handle stale/held mutexes
-        _singletonMutex ??= new Mutex(false, "Global\\RobloxGuardLogMonitor");
-        
-        int retries = 0;
-        const int maxRetries = 10;
-        const int retryDelayMs = 200;
-        
-        while (retries < maxRetries)
+        // Create PID lockfile to signal we're running
+        // This replaces the old mutex-based approach with a more reliable lockfile
+        try
         {
-            if (_singletonMutex.WaitOne(0))
-            {
-                // Successfully acquired!
-                _mutexAcquired = true;
-                LogToFile($"[LogMonitor.Start] ✓ Mutex acquired successfully (attempt {retries + 1})");
-                break;
-            }
-            
-            retries++;
-            if (retries < maxRetries)
-            {
-                LogToFile($"[LogMonitor.Start] Mutex held, retrying... (attempt {retries}/{maxRetries})");
-                System.Threading.Thread.Sleep(retryDelayMs);
-            }
+            LogToFile("[LogMonitor.Start] Creating PID lockfile...");
+            PidLockHelper.CreateLock();
+            LogToFile("[LogMonitor.Start] ✓ PID lockfile created successfully");
         }
-        
-        // If still can't acquire after all retries, exit
-        if (!_mutexAcquired)
+        catch (Exception ex)
         {
-            LogToFile("[LogMonitor.Start] ⚠ FAILED to acquire mutex after 10 retries - another instance likely running");
-            System.Console.WriteLine("[LogMonitor] ⚠ Another instance is already running. This process will exit.");
-            System.Threading.Thread.Sleep(200);
+            LogToFile($"[LogMonitor.Start] ⚠ Failed to create PID lockfile: {ex.Message}");
+            System.Console.WriteLine($"[LogMonitor] ERROR: Could not create lockfile: {ex.Message}");
             Environment.Exit(1);
-            return;  // Never reached, but kept for completeness
+            return;
         }
 
         _isRunning = true;
@@ -495,6 +475,18 @@ public class LogMonitor : IDisposable
     public void Dispose()
     {
         Stop();
+        
+        // Clean up PID lockfile
+        try
+        {
+            LogToFile("[LogMonitor.Dispose] Removing PID lockfile...");
+            PidLockHelper.RemoveLock();
+        }
+        catch (Exception ex)
+        {
+            LogToFile($"[LogMonitor.Dispose] WARNING: Could not remove lockfile: {ex.Message}");
+        }
+        
         _logReader?.Dispose();
         _fileWatcher?.Dispose();
         _singletonMutex?.Dispose();

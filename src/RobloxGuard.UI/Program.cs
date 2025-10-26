@@ -87,7 +87,7 @@ class Program
     /// Handles auto-start mode when EXE is clicked with no arguments.
     /// Logic:
     /// 1. If not installed: Auto-install silently
-    /// 2. Clean up any stale mutex
+    /// 2. Check if monitor is running (without aggressive cleanup)
     /// 3. If monitor not running: Start it in background
     /// </summary>
     static void HandleAutoStartMode()
@@ -97,10 +97,6 @@ class Program
             LogToFile("=== AUTO-START MODE ===");
             LogToFile($"ProcessPath: {Environment.ProcessPath}");
             LogToFile($"BaseDirectory: {AppContext.BaseDirectory}");
-
-            // Step 0: Clean up any stale mutex from previous failed instances
-            LogToFile("Step 0: Cleaning up stale resources...");
-            MonitorStateHelper.ForceCleanup();
 
             // Step 1: Auto-install if not already installed
             LogToFile("Step 1: Checking if installed...");
@@ -117,6 +113,8 @@ class Program
             }
 
             // Step 2: Check if monitor is already running
+            // NOTE: We do NOT call ForceCleanup() here because it would delete active lockfiles!
+            // PidLockHelper.IsMonitorRunning() handles stale lockfile cleanup automatically.
             LogToFile("Step 2: Checking if monitor is running...");
             bool isRunning = MonitorStateHelper.IsMonitorRunning();
             LogToFile($"IsMonitorRunning() = {isRunning}");
