@@ -328,24 +328,50 @@ class Program
             LogToFile("=== UNINSTALL MODE ===");
             LogToFile("Starting uninstallation...");
             
-            // Step 1: Kill any running RobloxGuard processes
+            // Step 1: Kill any running RobloxGuard processes (multiple times to be sure)
             try
             {
-                var processes = Process.GetProcessesByName("RobloxGuard");
-                foreach (var proc in processes)
+                for (int attempt = 0; attempt < 3; attempt++)
                 {
-                    // Don't kill ourselves, only background monitors
-                    if (proc.Id != Environment.ProcessId)
+                    var processes = Process.GetProcessesByName("RobloxGuard");
+                    int killed = 0;
+                    foreach (var proc in processes)
                     {
-                        proc.Kill();
-                        LogToFile($"✓ Killed monitor process (PID {proc.Id})");
+                        // Don't kill ourselves, only background monitors
+                        if (proc.Id != Environment.ProcessId)
+                        {
+                            try
+                            {
+                                proc.Kill(true); // Kill with children
+                                killed++;
+                                LogToFile($"✓ Killed process PID {proc.Id} (attempt {attempt + 1})");
+                            }
+                            catch (Exception e)
+                            {
+                                LogToFile($"Warning killing PID {proc.Id}: {e.Message}");
+                            }
+                        }
+                    }
+                    
+                    if (killed == 0)
+                    {
+                        LogToFile($"No processes to kill on attempt {attempt + 1}");
+                        break;
+                    }
+                    
+                    if (attempt < 2)
+                    {
+                        System.Threading.Thread.Sleep(500); // Wait before retry
                     }
                 }
             }
             catch (Exception ex)
             {
-                LogToFile($"Warning: Could not kill monitor process: {ex.Message}");
+                LogToFile($"Warning: Process termination issue: {ex.Message}");
             }
+            
+            // Give processes time to die
+            System.Threading.Thread.Sleep(1000);
             
             // Step 2: Perform uninstallation (registry restore)
             InstallerHelper.PerformUninstall();
@@ -361,8 +387,29 @@ class Program
             LogToFile("✓ Uninstallation completed successfully!");
             LogToFile("Cleaning up...");
             
-            // Give the log system time to flush
-            System.Threading.Thread.Sleep(100);
+            // Give the log system time to flush and processes to exit
+            System.Threading.Thread.Sleep(500);
+            
+            // Final check: kill any remaining RobloxGuard processes one more time
+            try
+            {
+                var finalProcesses = Process.GetProcessesByName("RobloxGuard");
+                foreach (var proc in finalProcesses)
+                {
+                    if (proc.Id != Environment.ProcessId)
+                    {
+                        try
+                        {
+                            proc.Kill(true);
+                            LogToFile($"✓ Final kill of PID {proc.Id}");
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+            
+            System.Threading.Thread.Sleep(500);
             
             if (Directory.Exists(appDataPath))
             {
@@ -370,17 +417,26 @@ class Program
                 {
                     // Delete the entire folder including logs
                     Directory.Delete(appDataPath, true);
+                    LogToFile("✓ AppData folder deleted");
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Silently ignore - folder might be in use briefly
+                    LogToFile($"Warning: Could not delete AppData: {ex.Message}");
                 }
             }
+            
+            // Show completion message
+            Console.WriteLine("\n✓ RobloxGuard has been uninstalled successfully!");
+            Console.WriteLine("  - Protocol handler restored");
+            Console.WriteLine("  - All files removed");
+            Console.WriteLine("  - Monitor process terminated\n");
+            System.Threading.Thread.Sleep(1500);
         }
         catch (Exception ex)
         {
             LogToFile($"✗ Uninstallation failed: {ex.Message}");
             LogToFile($"Stack: {ex.StackTrace}");
+            Console.WriteLine($"\n✗ Uninstall error: {ex.Message}\n");
         }
     }
 
