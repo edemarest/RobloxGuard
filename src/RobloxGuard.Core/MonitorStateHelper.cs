@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 
 namespace RobloxGuard.Core;
@@ -15,50 +16,100 @@ public static class MonitorStateHelper
     /// </summary>
     private static readonly string MutexName = "Global\\RobloxGuardLogMonitor";
 
+    private static readonly string _logPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "RobloxGuard",
+        "launcher.log"
+    );
+
+    private static void LogToFile(string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_logPath)!);
+            File.AppendAllText(_logPath, $"[{DateTime.Now:HH:mm:ss.fff}] [MonitorStateHelper] {message}\n");
+        }
+        catch { }
+    }
+
     /// <summary>
     /// Check if LogMonitor is currently running in the background.
-    /// Validates that:
-    /// 1. Mutex exists (indicating monitor was started)
-    /// 2. At least one RobloxGuard process is actually running (not just stale mutex)
+    /// Uses a timeout-based mutex acquisition attempt to verify monitor is actually running.
     /// </summary>
     /// <returns>True if monitor is actively running, false otherwise.</returns>
     public static bool IsMonitorRunning()
     {
         try
         {
-            // Step 1: Check if mutex exists
-            using var mutex = Mutex.OpenExisting(MutexName);
+            LogToFile("Checking if monitor is running...");
             
-            // Step 2: Mutex exists, but verify an actual process is running
-            // Check for any RobloxGuard processes (could be launcher or monitor)
-            var processes = Process.GetProcessesByName("RobloxGuard");
-            
-            if (processes.Length > 0)
+            // Try to open the existing mutex
+            Mutex? mutex = null;
+            try
             {
-                // At least one RobloxGuard process is running - monitor is active
+                mutex = Mutex.OpenExisting(MutexName);
+            }
+            catch (WaitHandleCannotBeOpenedException)
+            {
+                // Mutex doesn't exist - monitor definitely not running
+                LogToFile("Mutex does not exist - monitor not running");
+                return false;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Mutex exists but no access (different user) - be conservative
+                LogToFile("Mutex exists but no access - treating as running");
                 return true;
             }
-            
-            // Mutex exists but no processes running - stale mutex
-            // This can happen if process crashed or was killed
-            // Return false so a new monitor can start
-            return false;
-        }
-        catch (WaitHandleCannotBeOpenedException)
-        {
-            // Mutex doesn't exist - monitor not running
-            return false;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // Mutex exists but no access - treat as running to be safe
-            // (another user's session or elevated process)
-            return true;
+
+            using (mutex)
+            {
+                // Mutex exists - try to acquire it with a very short timeout
+                // If we can acquire it, nobody is holding it and it's stale
+                // If we can't, the monitor is actively holding it
+                LogToFile("Mutex exists - testing if actively held...");
+                
+                if (mutex.WaitOne(100)) // 100ms timeout
+                {
+                    // We acquired the mutex! This means no process is holding it
+                    // This is a stale mutex from a crashed process
+                    LogToFile("Mutex acquired in 100ms - stale mutex detected (no process holding it)");
+                    
+                    try
+                    {
+                        mutex.ReleaseMutex();
+                    }
+                    catch { }
+                    
+                    return false;
+                }
+                else
+                {
+                    // Mutex is actively held by another process
+                    LogToFile("Mutex could not be acquired (actively held) - monitor is running");
+                    
+                    // Double-check with process list anyway
+                    try
+                    {
+                        var processes = Process.GetProcessesByName("RobloxGuard");
+                        LogToFile($"Confirmed: Found {processes.Length} RobloxGuard process(es)");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogToFile($"Could not check processes: {ex.Message} - assuming monitor is running");
+                        return true;
+                    }
+                }
+            }
         }
         catch (Exception ex)
         {
-            // Unexpected error - log but assume not running (safer fallback)
-            System.Diagnostics.Debug.WriteLine($"[MonitorStateHelper] Error checking monitor state: {ex.Message}");
+            // Unexpected error
+            LogToFile($"ERROR in IsMonitorRunning: {ex.GetType().Name}: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[MonitorStateHelper] Error: {ex.Message}");
+            
+            // Safer fallback: assume NOT running to allow restart
             return false;
         }
     }

@@ -113,15 +113,21 @@ class Program
 
             // Step 2: Check if monitor is already running
             LogToFile("Checking if monitor is running...");
-            if (MonitorStateHelper.IsMonitorRunning())
+            bool isRunning = MonitorStateHelper.IsMonitorRunning();
+            LogToFile($"IsMonitorRunning() = {isRunning}");
+            Console.WriteLine($"[Program] IsMonitorRunning() = {isRunning}");
+            
+            if (isRunning)
             {
                 LogToFile("Monitor already running. Exiting.");
+                Console.WriteLine("[Program] Monitor already running, exiting.");
                 System.Threading.Thread.Sleep(500);
                 return;
             }
 
             // Step 3: Start monitor in background
             LogToFile("Starting monitor in background...");
+            Console.WriteLine("[Program] Starting monitor in background");
             StartMonitorInBackground();
         }
         catch (Exception ex)
