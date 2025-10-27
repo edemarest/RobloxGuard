@@ -71,9 +71,6 @@ public class LogMonitor : IDisposable
         RegexOptions.IgnoreCase | RegexOptions.Compiled
     );
 
-    // PlaytimeTracker for Feature A (playtime limit) and Feature B (after-hours)
-    private PlaytimeTracker? _playtimeTracker;
-
     // RobloxRestarter for graceful kill + auto-restart to home screen
     private RobloxRestarter? _restarter;
 
@@ -284,52 +281,6 @@ public class LogMonitor : IDisposable
             LogToFile($"[LogMonitor.Start] WARNING: Failed to initialize RobloxRestarter: {ex.Message}");
             _restarter = null;
         }
-
-        // Initialize PlaytimeTracker for Feature A (playtime limit) and Feature B (after-hours)
-        try
-        {
-            _playtimeTracker = new PlaytimeTracker(
-                getConfig: () => ConfigManager.Load(),
-                onTerminate: (reason) =>
-                {
-                    LogToFile($"[LogMonitor.PlaytimeTracker] KILL SCHEDULED: {reason}");
-                    System.Console.WriteLine($"[LogMonitor] PlaytimeTracker initiating process termination: {reason}");
-                    // Use graceful kill + auto-restart if possible
-                    KillAndRestartToHome(reason);
-                },
-                onDiagnostic: (message) =>
-                {
-                    LogToFile($"[LogMonitor.PlaytimeTracker] {message}");
-                }
-            );
-            LogToFile("[LogMonitor.Start] PlaytimeTracker initialized successfully");
-
-            // Try to resume from a persisted session (crash recovery)
-            var persistedSession = SessionStateManager.LoadActiveSession();
-            if (persistedSession != null)
-            {
-                LogToFile($"[LogMonitor.Start] Resuming persisted session: placeId={persistedSession.PlaceId}, elapsed={persistedSession.ElapsedTime.TotalMinutes:F1}min");
-                _playtimeTracker.ResumeSession(persistedSession);
-                _isFirstStart = false;  // Don't skip logs, we're resuming a session
-            }
-            else
-            {
-                // No persisted session. Try backfilling from recent Roblox logs
-                // (handles case where monitor crashed before SaveSession was called)
-                var backsession = TryBackfillSessionFromRecentLogs();
-                if (backsession != null)
-                {
-                    LogToFile($"[LogMonitor.Start] Backfilled session from recent logs: placeId={backsession.PlaceId}, elapsed={backsession.ElapsedTime.TotalMinutes:F1}min");
-                    _playtimeTracker.ResumeSession(backsession);
-                    _isFirstStart = false;  // Don't skip logs, we're resuming a session
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            LogToFile($"[LogMonitor.Start] WARNING: Failed to initialize PlaytimeTracker: {ex.Message}");
-            _playtimeTracker = null;
-        }
         
         // Start FileSystemWatcher for immediate new file detection
         SetupFileWatcher();
@@ -521,10 +472,7 @@ public class LogMonitor : IDisposable
                     HeartbeatHelper.UpdateHeartbeat();
                     
                     // Update session heartbeat while game is active (prove session is still alive)
-                    if (_playtimeTracker?.HasActiveSession() == true)
-                    {
-                        SessionStateManager.UpdateHeartbeat();
-                    }
+                    SessionStateManager.UpdateHeartbeat();
                 }
 
                 // Periodically check for NEW log files (every 500ms poll = every 5 iterations = 500ms)
@@ -558,12 +506,6 @@ public class LogMonitor : IDisposable
 
                 // Read new lines from current file
                 ReadNewLinesFromFile(logFile);
-
-                // Regular PlaytimeTracker checks (even between log updates)
-                if (_playtimeTracker != null)
-                {
-                    _playtimeTracker.CheckAndApplyLimits(DateTime.UtcNow);
-                }
 
                 // Poll frequently (100ms) for fast blocking
                 await Task.Delay(100, cancellationToken);
@@ -603,23 +545,14 @@ public class LogMonitor : IDisposable
             using (var fileStream = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 4096, FileOptions.SequentialScan))
             using (var reader = new StreamReader(fileStream))
             {
-                // On first start with NO active session, skip all existing entries and position at end of file
-                // (This is the normal startup case with no crash recovery)
-                if (_isFirstStart && !_playtimeTracker?.HasActiveSession() == true)
+                // On first start, skip all existing entries and position at end of file
+                // (This is the normal startup case)
+                if (_isFirstStart)
                 {
                     reader.BaseStream.Seek(0, SeekOrigin.End);
                     _lastPosition = reader.BaseStream.Position;
                     _isFirstStart = false;
-                    System.Console.WriteLine("[LogMonitor] Startup (no active session): Skipping existing log entries, monitoring for new games only");
-                    return;
-                }
-
-                // First time reading after startup with active session - don't skip
-                // (Session was resumed from crash recovery)
-                if (_isFirstStart)
-                {
-                    _isFirstStart = false;
-                    System.Console.WriteLine("[LogMonitor] Startup (active session resumed): Reading logs from current position");
+                    System.Console.WriteLine("[LogMonitor] Startup: Skipping existing log entries, monitoring for new games only");
                     return;
                 }
 
@@ -638,31 +571,8 @@ public class LogMonitor : IDisposable
                 string? line;
                 while ((line = reader.ReadLine()) != null)
                 {
-                    // Extract timestamp from log line for PlaytimeTracker
+                    // Extract timestamp from log line
                     var timestampUtc = ExtractTimestampFromLogLine(line);
-
-                    // ========== FEATURE B: After-hours enforcement + Feature A: Playtime limit ==========
-                    // Check for game join to record in PlaytimeTracker
-                    var joinMatch = JoiningGamePattern.Match(line);
-                    if (joinMatch.Success && long.TryParse(joinMatch.Groups[1].Value, out var joinPlaceId))
-                    {
-                        // Extract session GUID for session tracking
-                        var guidMatch = JoiningGameGuidPattern.Match(line);
-                        var sessionGuid = guidMatch.Success ? guidMatch.Groups[1].Value : Guid.NewGuid().ToString();
-
-                        LogToFile($"[LogMonitor.PlaytimeTracker] Game join detected: placeId={joinPlaceId}, guid={sessionGuid.Substring(0, 8)}..., time={timestampUtc:HH:mm:ss}Z");
-                        _playtimeTracker?.RecordGameJoin(joinPlaceId, sessionGuid, timestampUtc);
-                    }
-
-                    // Check for game exit to clear PlaytimeTracker session
-                    if (GameExitPattern.IsMatch(line))
-                    {
-                        LogToFile($"[LogMonitor.PlaytimeTracker] Game exit detected: time={timestampUtc:HH:mm:ss}Z");
-                        _playtimeTracker?.RecordGameExit(timestampUtc);
-                    }
-
-                    // Check if any scheduled kills need to be executed
-                    _playtimeTracker?.CheckAndApplyLimits(timestampUtc);
 
                     // ========== ORIGINAL PROTOCOL BLOCKING (backward compatibility) ==========
                     // Check for game join pattern
@@ -679,7 +589,6 @@ public class LogMonitor : IDisposable
                         {
                             LogToFile($"[LogMonitor] Game {placeId} IS BLOCKED");
                             LogToFile($"[LogMonitor] Silent Mode: {config.SilentMode}");
-                            LogToFile($"[LogMonitor] KillBlockedGameImmediately: {config.KillBlockedGameImmediately}");
                             Debug.WriteLine($"[LogMonitor] Game {placeId} is BLOCKED");
 
                             _onGameDetected(new LogBlockEvent
@@ -690,16 +599,9 @@ public class LogMonitor : IDisposable
                                 LogLine = line
                             });
 
-                            // If immediate kill is enabled, terminate now
-                            if (config.KillBlockedGameImmediately)
-                            {
-                                LogToFile($"[LogMonitor] Calling TerminateRobloxProcess (immediate kill enabled)");
-                                TerminateRobloxProcess();
-                            }
-                            else
-                            {
-                                LogToFile($"[LogMonitor] NOT terminating immediately (KillBlockedGameImmediately=false); PlaytimeTracker will handle");
-                            }
+                            // Terminate blocked game immediately
+                            LogToFile($"[LogMonitor] Calling TerminateRobloxProcess");
+                            TerminateRobloxProcess();
                         }
                         else
                         {
@@ -743,7 +645,7 @@ public class LogMonitor : IDisposable
 
     /// <summary>
     /// Gracefully kill Roblox process and automatically restart to home screen.
-    /// This is the preferred method for PlaytimeTracker kills as it:
+    /// This performs:
     ///   1. Sends WM_CLOSE for graceful close (allows cleanup)
     ///   2. Force kills if timeout
     ///   3. Waits for system cleanup
@@ -904,16 +806,6 @@ public class LogMonitor : IDisposable
     public void Dispose()
     {
         Stop();
-        
-        // Dispose PlaytimeTracker
-        try
-        {
-            _playtimeTracker?.Dispose();
-        }
-        catch (Exception ex)
-        {
-            LogToFile($"[LogMonitor.Dispose] WARNING: Error disposing PlaytimeTracker: {ex.Message}");
-        }
         
         // Clean up PID lockfile
         try
