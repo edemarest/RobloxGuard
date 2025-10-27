@@ -37,7 +37,7 @@ public static class PidLockHelper
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
-            File.AppendAllText(LogPath, $"[{DateTime.Now:HH:mm:ss.fff}] [PidLockHelper] {message}\n");
+            File.AppendAllText(LogPath, $"[{DateTime.UtcNow:HH:mm:ss.fff}Z] [PidLockHelper] {message}\n");
         }
         catch { }
     }
@@ -188,6 +188,28 @@ public static class PidLockHelper
         catch (Exception ex)
         {
             LogToFile($"WARNING: Force cleanup failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Get the PID from the lockfile, or 0 if invalid/not found.
+    /// </summary>
+    public static int GetMonitorPid()
+    {
+        try
+        {
+            if (!File.Exists(LockFilePath))
+                return 0;
+
+            string content = File.ReadAllText(LockFilePath).Trim();
+            if (int.TryParse(content, out int pid))
+                return pid;
+
+            return 0;
+        }
+        catch
+        {
+            return 0;
         }
     }
 

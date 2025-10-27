@@ -99,8 +99,16 @@ public static class RegistryHelper
         var backedUpHandler = GetBackedUpProtocolHandler();
         if (string.IsNullOrEmpty(backedUpHandler))
         {
-            // No backup found, remove our handler
-            UninstallProtocolHandler();
+            // No backup found, delete our handler completely
+            try
+            {
+                Registry.CurrentUser.DeleteSubKeyTree(ProtocolKey, false);
+                Registry.CurrentUser.DeleteSubKey(BackupKey, false);
+            }
+            catch
+            {
+                // Ignore errors - may not exist
+            }
             return;
         }
 
@@ -119,22 +127,43 @@ public static class RegistryHelper
     }
 
     /// <summary>
-    /// Removes the protocol handler entirely.
+    /// <summary>
+    /// Checks if RobloxGuard protocol handler is currently registered.
+    /// Returns true if HKCU\..\roblox-player\shell\open\command exists and points to RobloxGuard.exe
     /// </summary>
-    public static void UninstallProtocolHandler()
+    public static bool IsProtocolHandlerRegistered()
     {
         try
         {
-            Registry.CurrentUser.DeleteSubKeyTree(ProtocolKey, false);
-            Registry.CurrentUser.DeleteSubKey(BackupKey, false);
+            var handler = GetCurrentProtocolHandler();
+            return !string.IsNullOrEmpty(handler) && handler.Contains("RobloxGuard.exe", StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
-            // Ignore errors - may not exist
+            return false;
         }
     }
 
     /// <summary>
+    /// Checks if bootstrap entry exists in HKCU\...\Run
+    /// </summary>
+    public static bool IsBootstrapEntryRegistered()
+    {
+        try
+        {
+            const string runKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+            const string runKeyValue = "RobloxGuard";
+
+            using var key = Registry.CurrentUser.OpenSubKey(runKeyPath);
+            var value = key?.GetValue(runKeyValue);
+            return value != null && !string.IsNullOrEmpty(value.ToString());
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Checks if RobloxGuard is currently installed.
     /// Now checks for config file existence instead of protocol handler,
@@ -155,6 +184,49 @@ public static class RegistryHelper
         catch
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Creates a registry entry in HKCU\Software\Microsoft\Windows\CurrentVersion\Run
+    /// to auto-start RobloxGuard on system boot.
+    /// Used as a fallback when scheduled task creation fails.
+    /// </summary>
+    public static void SetBootstrapEntry(string robloxGuardExePath)
+    {
+        try
+        {
+            const string runKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+            const string runKeyValue = "RobloxGuard";
+
+            using var key = Registry.CurrentUser.CreateSubKey(runKeyPath);
+            key.SetValue(runKeyValue, robloxGuardExePath);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("Failed to create registry bootstrap entry", ex);
+        }
+    }
+
+    /// <summary>
+    /// Removes the registry bootstrap entry (cleanup during uninstall).
+    /// </summary>
+    public static void RemoveBootstrapEntry()
+    {
+        try
+        {
+            const string runKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+            const string runKeyValue = "RobloxGuard";
+
+            using var key = Registry.CurrentUser.OpenSubKey(runKeyPath, writable: true);
+            if (key != null)
+            {
+                key.DeleteValue(runKeyValue, throwOnMissingValue: false);
+            }
+        }
+        catch
+        {
+            // Ignore errors - value may not exist
         }
     }
 }

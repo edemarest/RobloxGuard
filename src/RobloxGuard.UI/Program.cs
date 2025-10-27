@@ -20,7 +20,7 @@ class Program
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_logPath)!);
-            File.AppendAllText(_logPath, $"[{DateTime.Now:HH:mm:ss}] {message}\n");
+            File.AppendAllText(_logPath, $"[{DateTime.UtcNow:HH:mm:ss}Z] {message}\n");
         }
         catch { }
     }
@@ -71,6 +71,14 @@ class Program
                 MonitorPlayerLogs();
                 break;
 
+            case "--check-monitor":
+                HandleCheckMonitor();
+                break;
+
+            case "--diagnose":
+                HandleDiagnose();
+                break;
+
             case "--help":
             case "-h":
                 ShowHelp();
@@ -98,6 +106,15 @@ class Program
             LogToFile($"ProcessPath: {Environment.ProcessPath}");
             LogToFile($"BaseDirectory: {AppContext.BaseDirectory}");
 
+            // Step 0: Ensure AppData directory exists before anything else
+            LogToFile("Step 0: Ensuring AppData directory exists...");
+            if (!AppDataHelper.EnsureAppDataDirectoryExists())
+            {
+                Console.WriteLine("[Program] FATAL: Cannot access AppData directory. Exiting.");
+                Environment.Exit(1);
+                return;
+            }
+
             // Step 1: Auto-install if not already installed
             LogToFile("Step 1: Checking if installed...");
             if (!InstallerHelper.IsInstalled())
@@ -110,6 +127,46 @@ class Program
             else
             {
                 LogToFile("Already installed.");
+            }
+
+            // Step 1.5: Verify scheduled tasks exist (recovery from task deletion)
+            LogToFile("Step 1.5: Verifying scheduled tasks...");
+            var exePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "RobloxGuard.exe");
+            
+            if (!TaskSchedulerHelper.DoesWatchdogTaskExist())
+            {
+                LogToFile("⚠ Watchdog task missing - recreating...");
+                var (watchdogSuccess, watchdogError) = TaskSchedulerHelper.CreateWatchdogTask(exePath, intervalMinutes: 1);
+                if (watchdogSuccess)
+                {
+                    LogToFile("✓ Watchdog task recreated successfully");
+                }
+                else
+                {
+                    LogToFile($"✗ Failed to recreate watchdog task: {watchdogError}");
+                }
+            }
+            else
+            {
+                LogToFile("✓ Watchdog task exists");
+            }
+
+            if (!TaskSchedulerHelper.DoesLogonTaskExist())
+            {
+                LogToFile("⚠ Logon task missing - recreating...");
+                var (logonSuccess, logonError) = TaskSchedulerHelper.CreateLogonTask(exePath);
+                if (logonSuccess)
+                {
+                    LogToFile("✓ Logon task recreated successfully");
+                }
+                else
+                {
+                    LogToFile($"✗ Failed to recreate logon task: {logonError}");
+                }
+            }
+            else
+            {
+                LogToFile("✓ Logon task exists");
             }
 
             // Step 2: Check if monitor is already running
@@ -284,7 +341,151 @@ class Program
         Console.WriteLine("  RobloxGuard.exe --handle-uri <uri>     Handle roblox-player:// protocol");
         Console.WriteLine("  RobloxGuard.exe --install-first-run    Perform first-run setup");
         Console.WriteLine("  RobloxGuard.exe --uninstall            Uninstall RobloxGuard");
+        Console.WriteLine("  RobloxGuard.exe --check-monitor        Health check (verify monitor is alive)");
+        Console.WriteLine("  RobloxGuard.exe --diagnose             Show scheduled task diagnostics");
         Console.WriteLine("  RobloxGuard.exe --help                 Show this help");
+    }
+
+    /// <summary>
+    /// Health check called by the watchdog task every 1 minute.
+    /// Verifies monitor is running AND responsive; restarts if hung or dead.
+    /// Also verifies registry/task setup is intact (recovery from user deletion).
+    /// Used by scheduled task via --check-monitor flag.
+    /// </summary>
+    static void HandleCheckMonitor()
+    {
+        try
+        {
+            LogToFile("=== CHECK-MONITOR HEALTH CHECK (Watchdog) ===");
+            
+            // Step 1: Verify registry entries are in place
+            LogToFile("Step 1: Verifying registry entries...");
+            var exePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "RobloxGuard.exe");
+            
+            if (!RegistryHelper.IsBootstrapEntryRegistered())
+            {
+                LogToFile("⚠ Bootstrap registry entry missing - recreating...");
+                try
+                {
+                    RegistryHelper.SetBootstrapEntry(exePath);
+                    LogToFile("✓ Bootstrap entry recreated");
+                }
+                catch (Exception ex)
+                {
+                    LogToFile($"✗ Failed to recreate bootstrap entry: {ex.Message}");
+                }
+            }
+            else
+            {
+                LogToFile("✓ Bootstrap entry exists");
+            }
+
+            // Step 2: Check if monitor is responsive (running + fresh heartbeat)
+            LogToFile("Step 2: Checking monitor responsiveness...");
+            if (MonitorStateHelper.IsMonitorResponsive())
+            {
+                LogToFile("✓ Monitor is healthy and running");
+                return;
+            }
+
+            // Monitor is either dead or hung - log detailed status
+            var statusDetail = MonitorStateHelper.GetDetailedStatus();
+            LogToFile($"⚠ {statusDetail}");
+            LogToFile("Attempting to restart monitor...");
+            
+            // Kill any orphaned process if it exists
+            if (MonitorStateHelper.IsMonitorRunning())
+            {
+                LogToFile("Monitor process detected but not responsive - killing it");
+                try
+                {
+                    var pid = PidLockHelper.GetMonitorPid();
+                    if (pid > 0)
+                    {
+                        var proc = Process.GetProcessById(pid);
+                        proc.Kill();
+                        System.Threading.Thread.Sleep(500);
+                        LogToFile($"Killed hung monitor process PID {pid}");
+                    }
+                }
+                catch { /* process may not exist */ }
+            }
+
+            // Monitor is dead, restart it
+            HandleAutoStartMode();
+        }
+        catch (Exception ex)
+        {
+            LogToFile($"ERROR in health check: {ex.Message}");
+            LogToFile($"Stack: {ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Diagnostic mode: show full status of all scheduled tasks.
+    /// Useful for troubleshooting auto-restart issues.
+    /// </summary>
+    static void HandleDiagnose()
+    {
+        try
+        {
+            Console.WriteLine("=== RobloxGuard Diagnostics ===\n");
+
+            // Show scheduled tasks status
+            Console.WriteLine("SCHEDULED TASKS:");
+            Console.WriteLine(TaskSchedulerHelper.GetDiagnostics());
+            Console.WriteLine();
+
+            // Show monitor status
+            Console.WriteLine("MONITOR STATUS:");
+            bool monitorRunning = MonitorStateHelper.IsMonitorRunning();
+            Console.WriteLine(monitorRunning ? "✓ Monitor is running" : "✗ Monitor is NOT running");
+            Console.WriteLine();
+
+            // Show config status
+            Console.WriteLine("CONFIGURATION:");
+            try
+            {
+                var config = ConfigManager.Load();
+                Console.WriteLine($"✓ Config loaded from: {ConfigManager.GetConfigPath()}");
+                Console.WriteLine($"  Blocklist entries: {config.Blocklist.Count}");
+                Console.WriteLine($"  Mode: {(config.WhitelistMode ? "Whitelist" : "Blacklist")}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"✗ Config load error: {ex.Message}");
+            }
+            Console.WriteLine();
+
+            // Show log file
+            var logPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "RobloxGuard",
+                "launcher.log"
+            );
+            Console.WriteLine("LOG FILE:");
+            Console.WriteLine($"Location: {logPath}");
+            Console.WriteLine(File.Exists(logPath) ? "✓ Log file exists" : "✗ Log file not found");
+            
+            if (File.Exists(logPath))
+            {
+                // Show last 20 lines
+                var lines = File.ReadAllLines(logPath);
+                if (lines.Length > 0)
+                {
+                    Console.WriteLine($"Last {Math.Min(20, lines.Length)} entries:");
+                    var lastLines = lines.TakeLast(Math.Min(20, lines.Length));
+                    foreach (var line in lastLines)
+                    {
+                        Console.WriteLine($"  {line}");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"✗ Diagnostic error: {ex.Message}");
+        }
     }
 
     static void HandleProtocolUri(string? uri)
@@ -306,8 +507,7 @@ class Program
         if (!placeId.HasValue)
         {
             Console.WriteLine("WARNING: Could not extract placeId from URI");
-            Console.WriteLine("Forwarding to upstream handler...");
-            // TODO: Forward to upstream
+            Console.WriteLine("(Protocol handler forwarding not implemented in v1.6.0)");
             return;
         }
 
@@ -327,8 +527,7 @@ class Program
             Console.WriteLine($"🚫 BLOCKED: PlaceId {placeId} is not allowed");
             Console.ResetColor();
             Console.WriteLine();
-            Console.WriteLine("This game would be blocked. Block UI would be shown here.");
-            // TODO: Show block UI
+            Console.WriteLine("Block UI for game blocking not implemented in v1.6.0");
         }
         else
         {
@@ -336,8 +535,7 @@ class Program
             Console.WriteLine($"✅ ALLOWED: PlaceId {placeId} is permitted");
             Console.ResetColor();
             Console.WriteLine();
-            Console.WriteLine("Forwarding to upstream handler...");
-            // TODO: Forward to upstream handler
+            Console.WriteLine("(Protocol handler forwarding not implemented in v1.6.0)");
         }
     }
 
@@ -380,7 +578,20 @@ class Program
             LogToFile("=== UNINSTALL MODE ===");
             LogToFile("Starting uninstallation...");
             
-            // Step 0: Force cleanup of mutex
+            // Step 0: Delete scheduled tasks first (before killing processes)
+            LogToFile("Removing scheduled tasks...");
+            var (tasksDeleted, tasksError) = TaskSchedulerHelper.DeleteScheduledTasks();
+            if (tasksDeleted)
+            {
+                LogToFile("✓ Scheduled tasks deleted");
+            }
+            else
+            {
+                LogToFile($"⚠ Scheduled task deletion: {tasksError}");
+            }
+            System.Threading.Thread.Sleep(100);
+            
+            // Step 1: Force cleanup of mutex
             LogToFile("Cleaning up system resources...");
             MonitorStateHelper.ForceCleanup();
             System.Threading.Thread.Sleep(200);
@@ -508,18 +719,8 @@ class Program
         {
             Console.WriteLine("Registering protocol handler...");
             
-            // Get app executable path
-            string appExePath = Path.Combine(AppContext.BaseDirectory, "RobloxGuard.exe");
-            if (!File.Exists(appExePath))
-            {
-                appExePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-            }
-            if (string.IsNullOrEmpty(appExePath) || !File.Exists(appExePath))
-            {
-                Console.WriteLine("ERROR: Could not determine application path.");
-                Environment.Exit(1);
-                return;
-            }
+            // Get app executable path using centralized method
+            string appExePath = GetApplicationPath();
 
             // Register protocol handler
             var (success, messages) = InstallerHelper.RegisterProtocolHandler(appExePath);
@@ -619,12 +820,21 @@ class Program
                 Console.WriteLine("╚════════════════════════════════════════╝");
                 Console.ResetColor();
                 
-                LogToFile($"[OnGameDetected] Game is blocked, showing alert window...");
-                
-                // Show alert window (Windows Forms - more reliable)
-                ShowAlertWindowThreadSafe();
-                
-                LogToFile($"[OnGameDetected] Alert dispatch complete, monitor continues");
+                // Check if silent mode is enabled
+                var config = ConfigManager.Load();
+                if (config.SilentMode)
+                {
+                    LogToFile($"[OnGameDetected] Game is blocked, but silent mode is enabled - NOT showing alert window");
+                }
+                else
+                {
+                    LogToFile($"[OnGameDetected] Game is blocked, showing alert window...");
+                    
+                    // Show alert window (Windows Forms - more reliable)
+                    ShowAlertWindowThreadSafe();
+                    
+                    LogToFile($"[OnGameDetected] Alert dispatch complete, monitor continues");
+                }
             }
             else
             {

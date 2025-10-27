@@ -22,7 +22,7 @@ public static class MonitorStateHelper
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_logPath)!);
-            File.AppendAllText(_logPath, $"[{DateTime.Now:HH:mm:ss.fff}] [MonitorStateHelper] {message}\n");
+            File.AppendAllText(_logPath, $"[{DateTime.UtcNow:HH:mm:ss.fff}Z] [MonitorStateHelper] {message}\n");
         }
         catch { }
     }
@@ -80,5 +80,45 @@ public static class MonitorStateHelper
     public static string GetDiagnostics()
     {
         return PidLockHelper.GetDiagnostics();
+    }
+
+    /// <summary>
+    /// Check if monitor is running AND responsive (not hung).
+    /// Returns true only if heartbeat is fresh.
+    /// Returns false if monitor is dead or not responding.
+    /// </summary>
+    public static bool IsMonitorResponsive()
+    {
+        try
+        {
+            // First check if process exists
+            if (!PidLockHelper.IsMonitorRunning())
+                return false;
+
+            // Check if heartbeat is fresh (responsive)
+            return HeartbeatHelper.IsHeartbeatFresh(maxAgeSeconds: 30);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Gets detailed status including responsiveness.
+    /// </summary>
+    public static string GetDetailedStatus()
+    {
+        if (!IsMonitorRunning())
+            return "⚠ Monitor not running";
+
+        if (HeartbeatHelper.IsHeartbeatFresh(maxAgeSeconds: 30))
+            return "✓ Monitor running and responsive";
+
+        var ageSeconds = HeartbeatHelper.GetHeartbeatAgeSeconds();
+        if (ageSeconds > 0)
+            return $"⚠ Monitor appears hung (no heartbeat for {ageSeconds:F0}s)";
+
+        return "⚠ Monitor running but not responding";
     }
 }

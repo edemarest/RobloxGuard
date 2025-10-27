@@ -28,9 +28,44 @@ public static class InstallerHelper
                 messages.Add($"⚠ Configuration setup warning: {ex.Message}");
             }
 
+            // Step 2: Create scheduled tasks for auto-restart (v1.6.0+)
+            // NOTE: Logon tasks are blocked for non-elevated users, so we use:
+            // - TIER 1: Registry Run key for boot startup (guaranteed)
+            // - TIER 2: Watchdog with 1-minute intervals (quasi-instant recovery if killed)
+            try
+            {
+                // Create watchdog task - runs every 1 minute to detect and restart monitor if crashed
+                // This ensures <60 second recovery time if monitor is killed
+                var (watchdogSuccess, watchdogError) = TaskSchedulerHelper.CreateWatchdogTask(appExePath, intervalMinutes: 1);
+                if (watchdogSuccess)
+                {
+                    messages.Add("✓ Watchdog task created (1-minute health checks)");
+                }
+                else
+                {
+                    messages.Add($"⚠ Watchdog task creation failed: {watchdogError}");
+                }
+            }
+            catch (Exception ex)
+            {
+                messages.Add($"⚠ Scheduled task setup warning: {ex.Message}");
+            }
+
+            // Step 3: Set Registry Run key as guaranteed boot startup method
+            try
+            {
+                RegistryHelper.SetBootstrapEntry(appExePath);
+                messages.Add("✓ Registry startup entry created (guaranteed boot startup)");
+            }
+            catch (Exception ex)
+            {
+                messages.Add($"⚠ Registry startup entry failed: {ex.Message}");
+            }
+
             messages.Add("✓ RobloxGuard is ready!");
             messages.Add("");
-            messages.Add("ℹ The log monitor will run automatically at startup.");
+            messages.Add("ℹ The monitor will run automatically at startup.");
+            messages.Add("ℹ A health-check task will verify the monitor is running every 5 minutes.");
             messages.Add("ℹ To enable protocol handler (pre-launch blocking), run:");
             messages.Add($"    {Path.GetFileName(appExePath)} --register-protocol");
 
@@ -70,16 +105,34 @@ public static class InstallerHelper
     }
 
     /// <summary>
-    /// Performs uninstall cleanup: restores original protocol handler.
+    /// Performs uninstall cleanup: deletes scheduled tasks and restores original protocol handler.
     /// </summary>
     public static void PerformUninstall()
     {
         try
         {
-            // Step 1: Restore original protocol handler
+            // Step 1: Delete scheduled tasks (logon + watchdog)
+            var (tasksDeleted, tasksError) = TaskSchedulerHelper.DeleteScheduledTasks();
+            if (!tasksDeleted)
+            {
+                // Log but don't fail - tasks may not exist on fresh uninstall
+                System.Diagnostics.Debug.WriteLine($"Note: Task deletion reported: {tasksError}");
+            }
+
+            // Step 2: Remove registry bootstrap entry (fallback startup)
+            try
+            {
+                RegistryHelper.RemoveBootstrapEntry();
+            }
+            catch
+            {
+                // Ignore errors - entry may not exist
+            }
+
+            // Step 3: Restore original protocol handler
             RegistryHelper.RestoreProtocolHandler();
 
-            // Step 2: Optional - delete app folder
+            // Step 4: Optional - delete app folder
             // (Installer or user can do this)
         }
         catch (Exception ex)
